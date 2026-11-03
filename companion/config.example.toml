@@ -1,0 +1,13 @@
+# Optional: the companion works without config.toml. Copy this file to config.toml only to
+# change a setting.
+
+# Optional: the companion finds WoW by itself (running game, Blizzard registry, usual folders).
+# Set it only if detection fails: the World of Warcraft folder or a game folder like _forever_.
+wow_path = ''
+
+# Normally empty: the code comes from the guild information (officers: /swf code <code>).
+# Set it only to force another bot, e.g. for tests.
+connection = ''
+
+# Read the death strip on screen (instant, with screenshot). WoW must be the active window.
+realtime = true

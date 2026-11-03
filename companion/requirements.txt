@@ -1,0 +1,4 @@
+mss==9.0.2
+Pillow==11.3.0
+requests==2.32.4
+pystray==0.19.5

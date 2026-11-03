@@ -1,0 +1,14 @@
+companion/.venv/
+companion/config.toml
+companion/state.json
+companion/out/
+__pycache__/
+companion/build/
+companion/dist/
+companion/build.log
+companion/dist-tray/
+companion/build_private.py
+companion/embedded.py
+companion/dist-private/
+companion/build-private/
+companion/log.txt

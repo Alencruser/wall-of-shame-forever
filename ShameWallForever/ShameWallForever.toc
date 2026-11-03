@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: Shame Wall Forever
+## Notes: Level-ups, deaths and guild roster for your guild in WoW Forever. Based on Memento Forever by alexauer.
+## Author: Alencruser
+## Version: v0.1.0
+## SavedVariables: ShameWallForeverDB
+
+DeathStrip.lua
+ShameWallForever.lua
