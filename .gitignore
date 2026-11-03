@@ -12,3 +12,4 @@ companion/embedded.py
 companion/dist-private/
 companion/build-private/
 companion/log.txt
+release/

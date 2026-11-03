@@ -1,22 +1,19 @@
 # Wall of Shame Forever
 
-## v0.1.0 (unreleased)
+## v0.1.0 (2026-11-03)
 
-- Renamed to Wall of Shame Forever: folder, SavedVariables `WallOfShameForeverDB`, slash commands
-  `/wos` and `/wallofshame`.
-- Own network (addon prefix `WALLOFSHAME`): no longer talks to Memento Forever users.
-- Death notices show the killer and its level (also sent to guildmates; older versions ignore it).
-- Own deaths for the companion program (on-screen strip + SavedVariables outbox), on as soon as
-  an officer sets the guild up with `/wos code <code>` (stored in the guild information).
-  `/wos discord` turns it off.
-- Without a guild, `/wos code <code>` shares deaths in game with everyone who pasted the same
-  code (hidden private channel) and sends them to Discord.
-- Leaving the guild removes its Discord code.
-- Leaderboard events: duels won against guildmates, killing blows on players of the other faction.
-- Level-ups posted on Discord right away (strip), `/wos striptest level` to try it.
-- Levels sent to the guild's bot (at login and on level-up), with the Battle.net battletag so the
-  bot can find the Discord member: highest level per class in the battletag directory and /activite.
-- `/wos flush`, `/wos striptest`.
+First release, based on Memento Forever v1.0.2 by alexauer (MIT), translated to English.
+
+- Gothic banners, chat lines and sounds for every level-up and death of your guildmates
+- Guild roster window (`/wos`): level, zone, last seen, deaths
+- Death notices with the killer and its level (falls, drowning and lava too)
+- Without a guild yet: `/wos code <code>` shares deaths with everyone who pasted the same code
+- Optional Discord integration with your guild's bot and the companion program: deaths and
+  level-ups with a screenshot, duels won against guildmates, killing blows on the other faction,
+  levels for the bot's member directory. Officers set it up once with `/wos code <code>`
+  (stored in the guild information); leaving the guild removes the code
+- Test commands for bot admins: `/wos striptest`, `/wos striptest level`, `/wos striptest duel`
+- Own addon network (`WALLOFSHAME`): independent from Memento Forever
 
 ## Memento Forever v1.0.2-en (2026-11-03)
 
