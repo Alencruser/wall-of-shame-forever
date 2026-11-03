@@ -34,6 +34,8 @@ Officers set it up once in game: `/wos code <code from the bot>` (stored in the 
 
 Privacy: only **your own** events are sent, to **your guild's** bot, with your character name, level, class, zone and Battle.net battletag (so the bot can find your Discord account). Nothing is sent without the companion program and a code from your guild.
 
+**Companion program:** source code and downloads on GitHub, [github.com/Alencruser/wall-of-shame-forever](https://github.com/Alencruser/wall-of-shame-forever). The repository opens on **launch day (November 4)**. It is **only for the optional Discord companion**: the addon itself is the one on this page, nothing else to download to play with it.
+
 ## Commands
 
 | Command | |
