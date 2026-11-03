@@ -14,10 +14,10 @@ with the addon gets the death banner, sound, chat line and a log entry.
 - [ ] Test in-game with 2 characters in the same guild (and 1 outside it, who must see nothing)
 - [ ] Catch-up for missed deaths: each player keeps a history of their own deaths
       (timestamp, level, zone) and sends recent ones in reply to `H`, so a guildmate who was
-      offline sees "X died while you were away" in `/swf log`
-- [x] Cause of death (killer + level) in the chat line and `/swf log`
+      offline sees "X died while you were away" in `/wos log`
+- [x] Cause of death (killer + level) in the chat line and `/wos log`
 - [ ] Cause of death in the death banner too (check the text still fits the artwork)
-- [ ] `/swf deaths` : list of the guild's recorded deaths (who, level, zone, date)
+- [ ] `/wos deaths` : list of the guild's recorded deaths (who, level, zone, date)
 
 ## P1 - Discord integration
 
@@ -26,18 +26,18 @@ addon -> death strip on screen (realtime) or SavedVariables (fallback) -> compan
 (https://github.com/ryan-flan/DOINK, MIT). Bot contract: `docs/bot-api.md`.
 
 - [x] Addon: killer and killer level from the combat log (environment deaths too), shown in game
-- [x] Addon: own deaths kept in `ShameWallForeverDB.outbox` with a unique id, strip shown 3 s
-      (`/swf discord` to enable, off by default; `/swf striptest`; `/swf flush`)
+- [x] Addon: own deaths kept in `WallOfShameForeverDB.outbox` with a unique id, strip shown 3 s
+      (`/wos discord` to enable, off by default; `/wos striptest`; `/wos flush`)
 - [x] Companion (Python): reads the strip + takes the death screenshot, reads the outbox,
       dedups on the id, retries, dry run to `out/` without bot
 - [x] Tests: Lua encoder -> rendered image -> Python decoder (gamma, noise, UTF-8, corruption)
-- [ ] **Test in game**: `/swf discord`, `/swf striptest` with the companion in dry run, then a real
+- [ ] **Test in game**: `/wos discord`, `/wos striptest` with the companion in dry run, then a real
       death (killer level with and without target), different UI scales and resolutions
 - [x] Connection code (bot address + guild key, nothing about the bot in the public repo):
-      officers type `/swf code <code>`, stored in the guild information, read by every member's
+      officers type `/wos code <code>`, stored in the guild information, read by every member's
       addon, picked up by the companion from SavedVariables. Players configure nothing
 - [ ] Test in game: `CanEditGuildInfo` / `SetGuildInfoText` on Forever, guild info length limit
-- [x] Before the guild exists: `/swf code <code>` per player, deaths shared in game through a
+- [x] Before the guild exists: `/wos code <code>` per player, deaths shared in game through a
       hidden private channel derived from the code, Discord through the same code
 - [x] Leaving the guild removes the code (addon remembers the last guild; companion forgets
       the code and drops waiting deaths)

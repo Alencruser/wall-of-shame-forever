@@ -1,4 +1,4 @@
-"""Shame Wall Forever companion: sends your own WoW deaths to the guild's Discord bot.
+"""Wall of Shame Forever companion: sends your own WoW deaths to the guild's Discord bot.
 
 Two sources, both deduplicated on the event id:
 - realtime: reads the death strip the addon draws in the top-left corner (WoW must be the
@@ -287,7 +287,7 @@ def check_outbox(paths, mtimes, state, sender):
 
 
 CODE_REMOVED_RE = re.compile(r'\["codeRemoved"\]\s*=\s*true')
-DB_START = "ShameWallForeverDB = {"
+DB_START = "WallOfShameForeverDB = {"
 
 
 def write_builtin_code(game_dirs):
@@ -300,7 +300,7 @@ def write_builtin_code(game_dirs):
         for account in glob.glob(os.path.join(game_dir, "WTF", "Account", "*", "")):
             if os.path.basename(os.path.dirname(account)) == "SavedVariables":
                 continue
-            path = os.path.join(account, "SavedVariables", "ShameWallForever.lua")
+            path = os.path.join(account, "SavedVariables", "WallOfShameForever.lua")
             entry = f'["connection"] = "{BUILTIN_CODE}",'
             try:
                 if os.path.exists(path):
@@ -321,7 +321,7 @@ def write_builtin_code(game_dirs):
 
 def saved_variables(game_dirs):
     return [p for d in game_dirs for p in glob.glob(
-        os.path.join(d, "WTF", "Account", "*", "SavedVariables", "ShameWallForever.lua"))]
+        os.path.join(d, "WTF", "Account", "*", "SavedVariables", "WallOfShameForever.lua"))]
 
 
 def main(stop=None):

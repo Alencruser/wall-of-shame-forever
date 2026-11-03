@@ -1,4 +1,4 @@
-# Shame Wall Forever companion
+# Wall of Shame Forever companion
 
 Small Windows program that sends **your own** deaths to the guild's Discord bot.
 
@@ -14,7 +14,7 @@ A death is never sent twice (event id).
 
 Players have nothing to configure: install the addon, start the companion.
 
-- **Officers, once per guild**: type `/swf code <code from the bot>` in game. The addon writes
+- **Officers, once per guild**: type `/wos code <code from the bot>` in game. The addon writes
   the code into the guild information (only ranks allowed to edit it can do this). Every
   member's addon reads it there, including members who join or log in later, and the
   companion picks it up from the addon's SavedVariables (written on `/reload` or logout).
@@ -23,7 +23,7 @@ Players have nothing to configure: install the addon, start the companion.
   `Code companion: swf1....` (about 140 of the 500 characters) and later only replaces the
   code inside it. Officers can edit the rest freely; if the line is deleted, members keep
   the last code they saw.
-- **Before the guild exists** (server launch): each player types `/swf code <code from the
+- **Before the guild exists** (server launch): each player types `/wos code <code from the
   bot>` once in game, then `/reload`. Everyone with the same code shares deaths in game
   through a hidden private channel (name and password derived from the code), and the
   companion gets the code from the SavedVariables as usual. Once in a guild, the addon
@@ -32,7 +32,7 @@ Players have nothing to configure: install the addon, start the companion.
   addon. The companion forgets it at the next `/reload` or logout and drops deaths still
   waiting, so nothing reaches the old guild's bot.
 - **Players**: start the companion. The WoW folder is found automatically (see below).
-  `/swf striptest` in game checks that the strip is read.
+  `/wos striptest` in game checks that the strip is read.
 - `--dry-run` saves events and screenshots to `out/` instead of sending them;
   `config.example.toml` documents the optional settings.
 
@@ -41,13 +41,13 @@ To run from source:
 ```
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python shamewall_companion.py
+.venv\Scripts\python wallofshame_companion.py
 ```
 
 ## Finding WoW
 
 The companion can live anywhere. It looks for game folders (`_forever_`, `_classic_era_`...)
-that contain `Interface\AddOns\ShameWallForever`, in this order, and again every 30 s:
+that contain `Interface\AddOns\WallOfShameForever`, in this order, and again every 30 s:
 
 1. `wow_path` from `config.toml` (then nothing else)
 2. the running WoW process (path of `Wow.exe`)
@@ -64,15 +64,15 @@ Click **More info**, then **Run anyway**.
 
 The addon runs on Classic Era too (same APIs). To try the whole chain on your PC:
 
-1. Copy `ShameWallForever` into `World of Warcraft\_classic_era_\Interface\AddOns\` and tick
+1. Copy `WallOfShameForever` into `World of Warcraft\_classic_era_\Interface\AddOns\` and tick
    **Load out of date AddOns** in the AddOn list (or put the number from
    `/dump select(4, GetBuildInfo())` after `## Interface:` in the `.toc`).
 2. Start the bot's local receiver (bot-bagarre): `npm run shamewall:local -- <deaths channel id>
    <level-ups channel id>`. It prints a connection code for `http://127.0.0.1:8787`: plain
    http is accepted only for this PC.
-3. Start the companion (`.venv\Scripts\python shamewall_companion.py`), WoW in windowed mode.
-4. In game, on a character **without a guild**: `/swf code <code>`, then `/reload`.
-5. `/swf striptest` and `/swf striptest level` post TEST cards (deleted after a minute); then
+3. Start the companion (`.venv\Scripts\python wallofshame_companion.py`), WoW in windowed mode.
+4. In game, on a character **without a guild**: `/wos code <code>`, then `/reload`.
+5. `/wos striptest` and `/wos striptest level` post TEST cards (deleted after a minute); then
    die or level up for real.
 
 ## Connect your own bot
@@ -105,7 +105,7 @@ folder:
 ```
 
 Give it to your officers (admin-only bot command, private message...). One officer types
-`/swf code <code>` in game and the whole guild gets it through the guild information.
+`/wos code <code>` in game and the whole guild gets it through the guild information.
 
 ### What the endpoint must do
 
@@ -116,7 +116,7 @@ For every request (full format in [`../docs/bot-api.md`](../docs/bot-api.md)):
 | `Authorization: Bearer <key>` is not your guild key | `401`, post nothing |
 | `guild` / `realm` in the `event` field are not your guild | `403`, post nothing |
 | `id` already received (the companion retries after network errors) | `200`, post nothing |
-| `test` is `true` (`/swf striptest`) | `200`, post nothing or post to a test channel |
+| `test` is `true` (`/wos striptest`) | `200`, post nothing or post to a test channel |
 | otherwise | post the death to your Discord channel (`screenshot` file when present), `200` |
 
 Any other error code makes the companion retry later (5 s, then up to 5 min).
@@ -124,21 +124,21 @@ Any other error code makes the companion retry later (5 s, then up to 5 min).
 ### Changing the key
 
 Someone left the guild with the code? Generate a new key, build the new code, and an officer
-types `/swf code <new code>`: the guild information is updated, old codes get `401`, and
+types `/wos code <new code>`: the guild information is updated, old codes get `401`, and
 queued deaths are sent again with the new code.
 
 ## The .exe (background app)
 
-`ShameWallCompanion.exe` has no console window, only an icon in the notification area (Bagarre
+`WallOfShameCompanion.exe` has no console window, only an icon in the notification area (Bagarre
 Club logo), like the TrollDiscord client. Its menu shows the status (WoW folder found, bot,
 last event sent) and has **Open log**, **Start with Windows** and **Quit**.
 
 - **First launch** (from Downloads or anywhere): it copies itself to
-  `%LOCALAPPDATA%\ShameWallCompanion`, starts with Windows (quoted `HKCU\...\Run` entry), adds
+  `%LOCALAPPDATA%\WallOfShameCompanion`, starts with Windows (quoted `HKCU\...\Run` entry), adds
   itself to **Settings > Apps > Installed apps** with an Uninstall button, and starts in the
   background. No admin rights. The downloaded file can be deleted.
 - **Update**: launch a newer `.exe` the same way: it stops the running one and replaces it.
-- **Uninstall**: from Windows Settings (or `ShameWallCompanion.exe --uninstall`): stops it,
+- **Uninstall**: from Windows Settings (or `WallOfShameCompanion.exe --uninstall`): stops it,
   removes the startup entry and the folder (settings, log, state).
 - One instance at a time. `config.toml`, `state.json` and `log.txt` live in the install folder.
 
@@ -150,7 +150,7 @@ Build (`assets/icon.png` and `assets/icon.ico` come from the Bagarre Club logo):
 ```
 
 From source, `python app.py` runs the tray app without installing anything, and
-`python shamewall_companion.py` the console version (`--dry-run` works with both).
+`python wallofshame_companion.py` the console version (`--dry-run` works with both).
 
 ## Tests
 

@@ -12,14 +12,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import events  # noqa: E402
 import strip  # noqa: E402
 
-LUA_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "ShameWallForever", "DeathStrip.lua")
+LUA_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "WallOfShameForever", "DeathStrip.lua")
 
 
 def lua_encoder():
     lua = lupa.LuaRuntime()
     ns = lua.table()
     with open(LUA_FILE, encoding="utf-8") as f:
-        lua.eval("function(src, ns) assert(load(src))('ShameWallForever', ns) end")(f.read(), ns)
+        lua.eval("function(src, ns) assert(load(src))('WallOfShameForever', ns) end")(f.read(), ns)
     return ns.EncodeStrip
 
 
@@ -88,7 +88,7 @@ class StripTest(unittest.TestCase):
 class OutboxTest(unittest.TestCase):
     def test_read_outbox(self):
         text = (
-            'ShameWallForeverDB = {\n["sound"] = true,\n["outbox"] = {\n'
+            'WallOfShameForeverDB = {\n["sound"] = true,\n["outbox"] = {\n'
             '"2|D|A-R:1|A|R|G|3|ROGUE|Zone \\"Q\\"|Wolf|2|1|", -- [1]\n'
             '"2|D|A-R:2|A|R|G|4|ROGUE|Zone|Falling||2|", -- [2]\n'
             '"2|L|A-R:L4|A|R|G|4|ROGUE|2|A#1|1|Durotar", -- [3]\n},\n["log"] = {\n"x",\n},\n}\n'

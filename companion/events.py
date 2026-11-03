@@ -46,13 +46,13 @@ def _unescape(s):
 
 
 def read_connection(text):
-    """ShameWallForeverDB.connection: the bot's code, copied by the addon from the guild info."""
+    """WallOfShameForeverDB.connection: the bot's code, copied by the addon from the guild info."""
     m = CONNECTION_RE.search(text)
     return _unescape(m.group(1)) if m else None
 
 
 def read_outbox(text):
-    """Payload strings of ShameWallForeverDB.outbox in a SavedVariables file."""
+    """Payload strings of WallOfShameForeverDB.outbox in a SavedVariables file."""
     m = OUTBOX_RE.search(text)
     if not m:
         return []

@@ -1,8 +1,8 @@
--- Shame Wall Forever: level-ups, deaths and guild roster for WoW Forever
+-- Wall of Shame Forever: level-ups, deaths and guild roster for WoW Forever
 -- Data travels through invisible addon messages on the guild channel.
 
 local ADDON_NAME, ns = ...
-local PREFIX = "SHAMEWALL" -- own network: does not talk to Memento Forever
+local PREFIX = "WALLOFSHAME" -- own network: does not talk to Memento Forever
 
 local db
 local playerName
@@ -24,7 +24,7 @@ local CODE_PATTERN = "swf1%.[%w_%-]+" -- bot connection code, see companion/conn
 -------------------------------------------------------------------------------
 
 local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Shame Wall|r: " .. msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Wall of Shame|r: " .. msg)
 end
 
 local function ShortName(name)
@@ -215,7 +215,7 @@ end
 local function UpdateChannel()
     -- db.guildName still set while not in a guild = leaving, see CheckGuildLeft
     local solo = not IsInGuild() and not db.guildName
-    local wanted = (solo and db.connection) and ("SWF" .. Hash(db.connection, 7)) or nil
+    local wanted = (solo and db.connection) and ("WOS" .. Hash(db.connection, 7)) or nil
     if channelName and channelName ~= wanted then
         LeaveChannelByName(channelName)
         channelName = nil
@@ -240,7 +240,7 @@ local function CheckGuildLeft()
         db.guildName = nil
         if db.connection then
             -- codeRemoved: a private companion build must never put its built-in code back
-            -- (write_builtin_code in companion/shamewall_companion.py)
+            -- (write_builtin_code in companion/wallofshame_companion.py)
             db.connection, db.codeRemoved = nil, true
             Print("You left your guild: its Discord code was removed.")
         end
@@ -389,7 +389,7 @@ local function RefreshWindow()
 end
 
 local function CreateWindow()
-    window = CreateFrame("Frame", "ShameWallForeverFrame", UIParent, "BasicFrameTemplateWithInset")
+    window = CreateFrame("Frame", "WallOfShameForeverFrame", UIParent, "BasicFrameTemplateWithInset")
     window:SetSize(540, 400)
     window:SetPoint("CENTER")
     window:SetMovable(true)
@@ -398,11 +398,11 @@ local function CreateWindow()
     window:SetScript("OnDragStart", window.StartMoving)
     window:SetScript("OnDragStop", window.StopMovingOrSizing)
     window:SetFrameStrata("DIALOG")
-    tinsert(UISpecialFrames, "ShameWallForeverFrame") -- closes with Escape
+    tinsert(UISpecialFrames, "WallOfShameForeverFrame") -- closes with Escape
 
     window.title = window:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     window.title:SetPoint("TOP", 0, -6)
-    window.title:SetText("Shame Wall Forever")
+    window.title:SetText("Wall of Shame Forever")
 
     local headers = { "Name", "Lvl", "Zone", "Last seen", "Deaths" }
     local x = { 0, 150, 195, 345, 425 }
@@ -738,8 +738,8 @@ end
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         if ... ~= ADDON_NAME then return end
-        ShameWallForeverDB = ShameWallForeverDB or {}
-        db = ShameWallForeverDB
+        WallOfShameForeverDB = WallOfShameForeverDB or {}
+        db = WallOfShameForeverDB
         for k, v in pairs(DEFAULTS) do
             if db[k] == nil then db[k] = v end
         end
@@ -767,7 +767,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
             local statusLevel, statusZone, statusClass = MyStatus()
             Send(table.concat({ "S", statusLevel, statusZone, statusClass, Member(playerName).deaths or 0 }, "|"))
         end)
-        Print("loaded. |cffffff00/swf|r opens the guild roster, |cffffff00/swf help|r lists all commands.")
+        Print("loaded. |cffffff00/wos|r opens the guild roster, |cffffff00/wos help|r lists all commands.")
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
@@ -803,8 +803,8 @@ local function Toggle(key, label)
     Print(label .. ": " .. (db[key] and "|cff00ff00on|r" or "|cffff3333off|r"))
 end
 
-SLASH_SHAMEWALLFOREVER1 = "/swf"
-SLASH_SHAMEWALLFOREVER2 = "/shamewall"
+SLASH_WALLOFSHAMEFOREVER1 = "/wos"
+SLASH_WALLOFSHAMEFOREVER2 = "/wallofshame"
 local GUILD_INFO_MAX = 500
 
 -- Officers: put the bot's code in the guild information, where every member's addon reads it
@@ -842,7 +842,7 @@ local function SetConnection(code)
     Print("Code saved in the guild information: every member gets it automatically.")
 end
 
-SlashCmdList.SHAMEWALLFOREVER = function(raw)
+SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
     raw = (raw or ""):match("^%s*(.-)%s*$")
     local msg = raw:lower()
     local code = raw:match("^[Cc][Oo][Dd][Ee]%s+(%S+)$") -- the code is case-sensitive
@@ -877,7 +877,7 @@ SlashCmdList.SHAMEWALLFOREVER = function(raw)
     elseif msg == "discord" then
         Toggle("discord", "Own deaths to Discord (needs the companion program)")
         if not db.connection then
-            Print("Not set up for your guild yet: an officer types /swf code <code from the bot>.")
+            Print("Not set up for your guild yet: an officer types /wos code <code from the bot>.")
         end
     elseif msg == "flush" then
         ReloadUI() -- WoW only writes SavedVariables on reload or logout
@@ -893,19 +893,19 @@ SlashCmdList.SHAMEWALLFOREVER = function(raw)
         Print("Test strip shown for 3 seconds: the bot posts a TEST card (bot admins only), deleted after a minute.")
     else
         Print("Commands:")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf - open/close the guild roster")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf log - last 20 level-ups and deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf guild - toggle own level-ups in guild chat")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf popup - toggle on-screen banners")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf self - toggle banners for your own level-ups and deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf sound - toggle sound")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf sync - request the current state from the guild")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf test - preview banners and sound")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf discord - toggle sending own deaths to Discord (on by default)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf code <code> - officers: set the Discord bot's code for the whole guild")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf flush - reload the UI so the companion gets pending deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf striptest - send a test death through the companion (bot admins only)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf striptest level - send a test level-up through the companion (bot admins only)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /swf striptest duel - send a test duel win through the companion (bot admins only)")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos - open/close the guild roster")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos log - last 20 level-ups and deaths")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos guild - toggle own level-ups in guild chat")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos popup - toggle on-screen banners")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos self - toggle banners for your own level-ups and deaths")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos sound - toggle sound")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos sync - request the current state from the guild")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos test - preview banners and sound")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos discord - toggle sending own deaths to Discord (on by default)")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos code <code> - officers: set the Discord bot's code for the whole guild")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos flush - reload the UI so the companion gets pending deaths")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest - send a test death through the companion (bot admins only)")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest level - send a test level-up through the companion (bot admins only)")
+        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest duel - send a test duel win through the companion (bot admins only)")
     end
 end

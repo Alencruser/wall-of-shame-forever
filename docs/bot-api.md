@@ -6,7 +6,7 @@ game through the addon and never report it.
 ## Connection code
 
 The bot address is **not** in the public code. The bot gives a connection code to officers on
-Discord (admin-only command, e.g. `/shamewall code`); one officer types `/swf code <code>` in
+Discord (admin-only command, e.g. `/shamewall code`); one officer types `/wos code <code>` in
 game, the addon stores it in the guild information, and every member's companion gets it from
 there. Players configure nothing.
 
@@ -91,7 +91,7 @@ Level event, sent at login and on every level-up. A level-up also goes through t
 - `killerLevel`: number, `-1` = skull level (show `??`), `null` when the game did not show the
   killer (not targeted, no nameplate)
 - `time`: Unix timestamp of the death
-- `test`: `true` for `/swf striptest`; post it only for the bot's admins (found by `battletag`),
+- `test`: `true` for `/wos striptest`; post it only for the bot's admins (found by `battletag`),
   otherwise reply 200 without posting, so that players cannot flood the channels
 - `source`: `realtime` (strip read on screen, with screenshot) or `savedvariables` (fallback after
   /reload or logout, no screenshot)

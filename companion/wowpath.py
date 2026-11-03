@@ -1,6 +1,6 @@
 """Find the WoW game folders (e.g. _forever_, _classic_era_) where the addon is installed.
 
-A game folder is the one that contains Interface\\AddOns\\ShameWallForever and WTF.
+A game folder is the one that contains Interface\\AddOns\\WallOfShameForever and WTF.
 Tried in order: config wow_path, running WoW process, the companion's own location,
 the Blizzard registry key, the usual install folders on every drive.
 """
@@ -11,7 +11,7 @@ import string
 import winreg
 from ctypes import wintypes
 
-ADDON_TOC = os.path.join("Interface", "AddOns", "ShameWallForever", "ShameWallForever.toc")
+ADDON_TOC = os.path.join("Interface", "AddOns", "WallOfShameForever", "WallOfShameForever.toc")
 REGISTRY_KEYS = [
     r"SOFTWARE\WOW6432Node\Blizzard Entertainment\World of Warcraft",
     r"SOFTWARE\Blizzard Entertainment\World of Warcraft",

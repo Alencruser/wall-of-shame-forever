@@ -1,4 +1,4 @@
-"""Decode the death strip drawn by the addon (ShameWallForever/DeathStrip.lua).
+"""Decode the death strip drawn by the addon (WallOfShameForever/DeathStrip.lua).
 
 Keep the constants in sync with the Lua side.
 """

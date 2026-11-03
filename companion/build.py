@@ -1,4 +1,4 @@
-"""Builds dist/ShameWallCompanion.exe: background app (no console), Bagarre Club icon.
+"""Builds dist/WallOfShameCompanion.exe: background app (no console), Bagarre Club icon.
 
 .venv\\Scripts\\python build.py [output folder, default dist]
 """
@@ -19,7 +19,7 @@ if os.path.exists(os.path.join(HERE, "embedded.py")) and not os.environ.get("SWF
 
 subprocess.run([
     sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--noconsole",
-    "--name", "ShameWallCompanion",
+    "--name", "WallOfShameCompanion",
     "--icon", os.path.join(ASSETS, "icon.ico"),
     "--add-data", f"{os.path.join(ASSETS, 'icon.png')}{os.pathsep}assets",
     "--distpath", DIST,
@@ -27,4 +27,4 @@ subprocess.run([
     "--specpath", WORK,
     os.path.join(HERE, "app.py"),
 ], check=True)
-print(os.path.join(DIST, "ShameWallCompanion.exe"))
+print(os.path.join(DIST, "WallOfShameCompanion.exe"))

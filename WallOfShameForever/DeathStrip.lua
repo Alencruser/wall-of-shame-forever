@@ -1,4 +1,4 @@
--- Shame Wall Forever: death strip
+-- Wall of Shame Forever: death strip
 -- Draws a short-lived strip of colored blocks in the top-left corner so the
 -- companion program can read a death in real time from a screen capture.
 -- The decoder lives in companion/strip.py: keep both in sync.

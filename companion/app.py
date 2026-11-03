@@ -1,7 +1,7 @@
-"""Shame Wall Forever companion as a Windows background app (the .exe entry point).
+"""Wall of Shame Forever companion as a Windows background app (the .exe entry point).
 
 - no console: an icon in the notification area (status, log, start with Windows, quit)
-- first launch of the .exe: copies itself to %LOCALAPPDATA%\\ShameWallCompanion, starts with
+- first launch of the .exe: copies itself to %LOCALAPPDATA%\\WallOfShameCompanion, starts with
   Windows, and shows up in Settings > Apps with an Uninstall button (no admin rights needed)
 - launching a newer .exe replaces the installed one (update)
 - one instance at a time
@@ -16,15 +16,15 @@ import threading
 import time
 import winreg
 
-APP = "ShameWallCompanion"
-NAME = "Shame Wall Forever companion"
+APP = "WallOfShameCompanion"
+NAME = "Wall of Shame Forever companion"
 VERSION = "0.1.0"
 INSTALL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), APP)
 INSTALLED_EXE = os.path.join(INSTALL_DIR, APP + ".exe")
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall" + "\\" + APP
-MUTEX_NAME = "Local\\ShameWallCompanionRunning"
-QUIT_EVENT_NAME = "Local\\ShameWallCompanionQuit"  # set by another instance to stop this one
+MUTEX_NAME = "Local\\WallOfShameCompanionRunning"
+QUIT_EVENT_NAME = "Local\\WallOfShameCompanionQuit"  # set by another instance to stop this one
 
 FROZEN = getattr(sys, "frozen", False)
 user32 = ctypes.windll.user32
@@ -80,7 +80,7 @@ def register_uninstall():
         values = {
             "DisplayName": NAME,
             "DisplayVersion": VERSION,
-            "Publisher": "Shame Wall Forever",
+            "Publisher": "Wall of Shame Forever",
             "DisplayIcon": INSTALLED_EXE,
             "InstallLocation": INSTALL_DIR,
             "UninstallString": f'"{INSTALLED_EXE}" --uninstall',
@@ -144,11 +144,11 @@ def install():
     message(("Updated." if updating else "Installed.") + "\n\n"
             "The companion runs in the background: its icon is near the clock (click ^ if hidden). "
             "It starts with Windows.\n\nYou can delete this downloaded file. To uninstall: "
-            "Windows Settings > Apps > Installed apps > Shame Wall Forever companion.")
+            "Windows Settings > Apps > Installed apps > Wall of Shame Forever companion.")
 
 
 def uninstall():
-    if message("Uninstall the Shame Wall Forever companion?\n\nYour deaths and level-ups will no "
+    if message("Uninstall the Wall of Shame Forever companion?\n\nYour deaths and level-ups will no "
                "longer be sent to Discord.", MB_YESNO | MB_ICONWARNING) != IDYES:
         return
     stop_running_instance()
@@ -169,7 +169,7 @@ def run():
     quit_event = kernel32.CreateEventW(None, True, False, QUIT_EVENT_NAME)
 
     import pystray
-    import shamewall_companion as companion
+    import wallofshame_companion as companion
 
     stop = threading.Event()
     worker = threading.Thread(target=companion_main, args=(companion, stop), daemon=True)
