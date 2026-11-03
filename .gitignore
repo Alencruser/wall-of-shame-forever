@@ -13,3 +13,5 @@ companion/dist-private/
 companion/build-private/
 companion/log.txt
 release/
+.curseforge-token
+companion/private-code.txt
