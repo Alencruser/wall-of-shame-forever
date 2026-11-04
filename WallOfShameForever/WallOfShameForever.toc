@@ -1,9 +1,11 @@
 ## Interface: 16001
 ## Title: Wall of Shame Forever
 ## Notes: Level-ups, deaths and guild roster for your guild in WoW Forever. Based on Memento Forever by alexauer.
+## Notes-frFR: Level-ups, morts et liste de la guilde pour WoW Forever. Basé sur Memento Forever par alexauer.
 ## Author: Alencruser
 ## Version: v0.1.0
 ## SavedVariables: WallOfShameForeverDB
 
+Locales.lua
 DeathStrip.lua
 WallOfShameForever.lua

@@ -1,5 +1,27 @@
 # Wall of Shame Forever
 
+## Unreleased
+
+- New banners for level-ups, deaths and duels; one level-up banner for every class
+- Duel lost against a guildmate: the loser reports it, the whole guild gets a banner
+  and a chat line (older versions ignore it)
+- French translation of every in-game text. The addon follows the game client's language;
+  `/wos lang auto|en|fr` or the options panel forces English or French
+- French banners: "X est mort contre Y" with the killer, and a random sentence for duels
+  ("X a terrassé Y", "X vient de bouler Y", "X a ragdoll Y", "X a plié en deux Y",
+  "Y s'est fait hagar par X", "X a rincé Y", "X a fumé Y", "X a corrigé Y",
+  "Y s'est fait sécher par X", "Y s'est fait rouler dessus par X"), drawn by the loser so the
+  whole guild sees the same one; falls, drowning, lava and fire have sentences of their own
+  ("X a testé la gravité", "X a oublié de respirer", "X a fini à point"...), drawn by the dead;
+  long titles go on two lines instead of being cut
+- Own sounds for the level-up, death and duel banners (media/sounds); the game's sounds
+  are only used if the client refuses the file
+- Options panel (`/wos options`, Options button in the roster, game menu > Options > AddOns):
+  all banners or only your own, sound on/off and its volume (also `/wos volume`), language,
+  and a button to test the banners. The slash commands still work
+- Turning the banners off also silences their sounds: never a sound without its banner
+- Banner font: Lilita One (SIL Open Font License 1.1), replaces UnifrakturMaguntia
+
 ## v0.1.0 (2026-11-03)
 
 First release, based on Memento Forever v1.0.2 by alexauer (MIT), translated to English.

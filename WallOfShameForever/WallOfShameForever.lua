@@ -12,9 +12,11 @@ local rosterReady = false
 local DEFAULTS = {
     announceGuild = true, -- post every own level-up in guild chat
     popups = true,        -- big on-screen banner
-    selfBanner = true,    -- banner for own level-ups and deaths too
+    selfBanner = true,    -- banner for own level-ups, deaths and lost duels too
     sound = true,
+    volume = 100,         -- banner sounds: 20, 40, 60, 80 or 100 % (one file per volume, media/sounds)
     discord = true,       -- own deaths for the companion, once officers set the guild up
+    language = "auto",    -- "auto" (game client's language), "en" or "fr": see Locales.lua
 }
 local MAX_OUTBOX = 200 -- WoW writes it only on /reload or logout: room for a PvP evening
 local CODE_PATTERN = "swf1%.[%w_%-]+" -- bot connection code, see companion/connection.py
@@ -22,6 +24,35 @@ local CODE_PATTERN = "swf1%.[%w_%-]+" -- bot connection code, see companion/conn
 -------------------------------------------------------------------------------
 -- Helpers
 -------------------------------------------------------------------------------
+
+-- Current language: the option, else the game client's language
+local function Lang()
+    local option = db and db.language
+    if option == "en" or option == "fr" then return option end
+    return (GetLocale and GetLocale() == "frFR") and "fr" or "en"
+end
+
+-- Translated text (Locales.lua), formatted with the extra arguments
+local function L(key, ...)
+    local text = ns.LOCALES[Lang()][key] or ns.LOCALES.en[key] or key
+    if select("#", ...) > 0 then return text:format(...) end
+    return text
+end
+
+local function ClassName(classFile)
+    return classFile and ns.LOCALES.en["class_" .. classFile] and L("class_" .. classFile) or nil
+end
+
+-- Killer for display: environment tokens (Falling, Drowning...) translated, names as they are
+local function KillerName(killer)
+    if not killer or killer == "" then return nil end
+    if ns.LOCALES.en["env_" .. killer] then return L("env_" .. killer) end
+    return killer
+end
+
+local SetLanguage, ToggleOptions, RefreshOptions -- options, below
+local VOLUMES, SnapVolume, PlayBannerSound -- sound, with the banners
+local RegisterGameOptions -- game menu > Options > AddOns, with the options panel
 
 local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Wall of Shame|r: " .. msg)
@@ -55,14 +86,10 @@ local function AddLog(text)
 end
 
 -------------------------------------------------------------------------------
--- WoW-style banners (level-up gold, death red), stacked at the top center
+-- Banners (level-up gold, death red, duel lost iron), stacked at the top center
 -------------------------------------------------------------------------------
 
-local CLASS_NAMES = {
-    WARRIOR = "Warrior", PALADIN = "Paladin", HUNTER = "Hunter", ROGUE = "Rogue",
-    PRIEST = "Priest", SHAMAN = "Shaman", MAGE = "Mage", WARLOCK = "Warlock",
-    DRUID = "Druid",
-}
+-- Game sounds, only if the addon's own sound cannot be played (media/sounds)
 local SOUND_LEVEL = 888 -- LEVELUPSOUND
 local SOUND_DEATH = 847 -- igQuestFailed
 local SHOW_TIME, FADE_IN, FADE_OUT, POP = 5.0, 0.25, 0.8, 0.25
@@ -108,12 +135,15 @@ local function BannerOnUpdate(b, elapsed)
 end
 
 local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\"
-local TITLE_FONT = MEDIA .. "Unifraktur.ttf"
--- Text position per banner (pixels in the 440x220 banner, from top left)
+local TITLE_FONT = MEDIA .. "LilitaOne.ttf"
+-- Text centered in the dark panel: distance from the top of the 440x220 banner
 local LAYOUT = {
-    level = { title = { 124, 89 }, sub = { 126, 116 } },
-    death = { title = { 128, 97 }, sub = { 130, 124 } },
+    level = { title = 96, sub = 126 },
+    death = { title = 84, sub = 114 },
+    duel = { title = 96, sub = 126, inset = 72 }, -- narrower: faces on both sides
 }
+local TEXT_INSET = 60 -- left and right, keeps the text inside the panel (LAYOUT inset overrides)
+local TITLE_SIZE = 26
 
 local function CreateBanner()
     local b = CreateFrame("Frame", nil, UIParent)
@@ -124,13 +154,17 @@ local function CreateBanner()
     b.art:SetAllPoints()
 
     b.title = b:CreateFontString(nil, "OVERLAY")
-    if not b.title:SetFont(TITLE_FONT, 26, "OUTLINE") then
-        b.title:SetFont("Fonts\\MORPHEUS.TTF", 22, "OUTLINE") -- fallback if the font is missing
+    b.titleFont = TITLE_FONT
+    if not b.title:SetFont(TITLE_FONT, TITLE_SIZE, "OUTLINE") then
+        b.titleFont = "Fonts\\MORPHEUS.TTF" -- fallback if the font is missing
+        b.title:SetFont(b.titleFont, TITLE_SIZE, "OUTLINE")
     end
-    b.title:SetJustifyH("LEFT")
+    b.title:SetJustifyH("CENTER")
+    b.title:SetWordWrap(false)
 
     b.sub = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    b.sub:SetJustifyH("LEFT")
+    b.sub:SetJustifyH("CENTER")
+    b.sub:SetWordWrap(false)
 
     -- flash on appearance: the banner itself, additively blended
     b.shine = b:CreateTexture(nil, "OVERLAY", nil, 1)
@@ -143,28 +177,74 @@ local function CreateBanner()
     return b
 end
 
-local function BannerTexture(kind, classFile)
-    if kind == "death" then return MEDIA .. "banners\\death" end
-    -- The emblem is part of the artwork; unknown class -> warrior banner
-    local key = (classFile and CLASS_NAMES[classFile]) and classFile:lower() or "warrior"
-    return MEDIA .. "banners\\" .. key
+local MIN_ONE_LINE = 20   -- below this size, a title with a line break goes on two lines
+local TWO_LINE_SIZE = 19  -- largest size on two lines
+local TWO_LINE_SHIFT = 8  -- two lines: title starts higher, subtitle lower
+
+local function MeasureTitle(b, text, size)
+    b.title:SetFont(b.titleFont, size, "OUTLINE")
+    b.title:SetText(text)
+    local measure = b.title.GetUnboundedStringWidth or b.title.GetStringWidth
+    return measure(b.title) or 0
 end
 
-local function ApplyLayout(b, kind, classFile)
-    local L = LAYOUT[kind]
-    local tex = BannerTexture(kind, classFile)
-    b.art:SetTexture(tex)
-    b.shine:SetTexture(tex)
+-- Title "\n" marks where it may break: one line when it fits (shrunk a little if needed),
+-- else two lines. Never cut.
+local function SetTitle(b, kind, text)
+    local pos = LAYOUT[kind]
+    local inset = pos.inset or TEXT_INSET
+    local room = 440 - 2 * inset
+    local oneLine = (text:gsub("\n", " "))
+    local size, lines, shown = TITLE_SIZE, 1, oneLine
+    local width = MeasureTitle(b, oneLine, TITLE_SIZE)
+    if width > room then
+        size = math.floor(TITLE_SIZE * room / width)
+        if size < MIN_ONE_LINE and text:find("\n") then
+            local widest = 0
+            for line in text:gmatch("[^\n]+") do widest = math.max(widest, MeasureTitle(b, line, TITLE_SIZE)) end
+            size = math.min(TWO_LINE_SIZE, math.floor(TITLE_SIZE * room / widest))
+            lines, shown = 2, text
+        end
+    end
+    b.title:SetFont(b.titleFont, size, "OUTLINE")
+    b.title:SetWordWrap(lines == 2)
+    b.title:SetText(shown)
+
+    local shift = lines == 2 and TWO_LINE_SHIFT or 0
     b.title:ClearAllPoints()
-    b.title:SetPoint("TOPLEFT", L.title[1], -L.title[2])
-    b.title:SetPoint("RIGHT", -60, 0)
+    b.title:SetPoint("TOPLEFT", inset, -(pos.title - shift))
+    b.title:SetPoint("TOPRIGHT", -inset, -(pos.title - shift))
     b.sub:ClearAllPoints()
-    b.sub:SetPoint("TOPLEFT", L.sub[1], -L.sub[2])
-    b.sub:SetPoint("RIGHT", -60, 0)
+    b.sub:SetPoint("TOPLEFT", inset, -(pos.sub + shift))
+    b.sub:SetPoint("TOPRIGHT", -inset, -(pos.sub + shift))
 end
 
--- kind: "level" or "death"
-local function ShowBanner(kind, name, classFile, level, zone)
+-- PlaySoundFile has no volume: each sound exists at 5 volumes
+VOLUMES = { 20, 40, 60, 80, 100 }
+
+SnapVolume = function(value)
+    local best = VOLUMES[#VOLUMES]
+    for _, v in ipairs(VOLUMES) do
+        if math.abs(v - (tonumber(value) or 100)) < math.abs(best - (tonumber(value) or 100)) then best = v end
+    end
+    return best
+end
+
+-- the banner's own sound at the chosen volume, else the game's
+PlayBannerSound = function(kind)
+    local channel = "SFX"
+    local file = MEDIA .. "sounds\\" .. kind .. "_" .. SnapVolume(db.volume) .. ".ogg"
+    local ok, played = pcall(PlaySoundFile, file, channel)
+    if not (ok and played) then
+        pcall(PlaySound, kind == "level" and SOUND_LEVEL or SOUND_DEATH, channel)
+    end
+end
+
+-- kind: "level", "death" or "duel".
+-- death: other = killer (mob, player or environment token); duel: name lost against other.
+-- variant = number of the French sentence, drawn by the dead or the loser so that the whole
+-- guild shows the same one
+local function ShowBanner(kind, name, classFile, level, zone, other, otherClass, variant)
     if db.popups then
         local b
         for _, pooled in ipairs(bannerPool) do
@@ -174,16 +254,43 @@ local function ShowBanner(kind, name, classFile, level, zone)
         if #activeBanners >= MAX_BANNERS then ReleaseBanner(activeBanners[1]) end
 
         local zoneText = (zone and zone ~= "") and ("  -  " .. zone) or ""
-        ApplyLayout(b, kind, classFile)
+        local tex = MEDIA .. "banners\\" .. kind
+        b.art:SetTexture(tex)
+        b.shine:SetTexture(tex)
+        local texts = ns.LOCALES[Lang()]
 
         if kind == "death" then
-            b.title:SetText(name .. " has fallen")
+            -- French: a sentence of its own for falls, drowning, lava and fire (drawn by the dead),
+            -- else with the killer
+            local killer = KillerName(other)
+            local envSentences = other and texts.banner_death_env and texts.banner_death_env[other]
+            if envSentences then
+                local sentence = envSentences[variant] or envSentences[math.random(#envSentences)]
+                SetTitle(b, kind, sentence:format(name))
+            elseif killer and texts.banner_death_by then
+                SetTitle(b, kind, L("banner_death_by", name, killer))
+            else
+                SetTitle(b, kind, L("banner_death", name))
+            end
             b.title:SetTextColor(0.94, 0.2, 0.16)
-            b.sub:SetText("|cffe6dcd2Level " .. (level or "?") .. zoneText .. "|r")
+            b.sub:SetText("|cffe6dcd2" .. L("banner_death_sub", level or "?", zoneText) .. "|r")
+        elseif kind == "duel" then
+            b.title:SetTextColor(0.9, 0.9, 0.9)
+            local variants = texts.banner_duel_variants -- French: sentence drawn by the loser
+            if variants then
+                local sentence = variants[variant] or variants[math.random(#variants)]
+                local who = { winner = other or "?", loser = name }
+                SetTitle(b, kind, (sentence:gsub("{(%a+)}", function(key) return who[key] end)))
+                b.sub:SetText((zone and zone ~= "") and ("|cffe6dcd2" .. zone .. "|r") or "")
+            else
+                SetTitle(b, kind, L("banner_duel", name))
+                b.sub:SetText("|cffe6dcd2" .. L("banner_duel_against") .. "|r " .. ClassColored(other or "?", otherClass)
+                    .. "|cffe6dcd2" .. zoneText .. "|r")
+            end
         else
-            b.title:SetText("Level " .. (level or "?") .. "!")
+            SetTitle(b, kind, L("banner_level", level or "?"))
             b.title:SetTextColor(1, 0.82, 0.35)
-            local className = classFile and CLASS_NAMES[classFile]
+            local className = ClassName(classFile)
             b.sub:SetText(ClassColored(name, classFile)
                 .. (className and (" |cffbbbbbb(" .. className .. ")|r") or "") .. zoneText)
         end
@@ -193,9 +300,7 @@ local function ShowBanner(kind, name, classFile, level, zone)
         b:Show()
         table.insert(activeBanners, b)
         LayoutBanners()
-    end
-    if db.sound then
-        pcall(PlaySound, kind == "death" and SOUND_DEATH or SOUND_LEVEL)
+        if db.sound then PlayBannerSound(kind) end -- never a sound without its banner
     end
 end
 
@@ -242,7 +347,7 @@ local function CheckGuildLeft()
             -- codeRemoved: a private companion build must never put its built-in code back
             -- (write_builtin_code in companion/wallofshame_companion.py)
             db.connection, db.codeRemoved = nil, true
-            Print("You left your guild: its Discord code was removed.")
+            Print(L("left_guild_code"))
         end
         UpdateChannel()
     end)
@@ -320,9 +425,10 @@ end
 
 local function KillerText(killer, killerLevel)
     if not killer or killer == "" then return "" end
+    killer = KillerName(killer)
     local level = tonumber(killerLevel)
-    if not level then return ", killed by " .. killer end
-    return ", killed by " .. killer .. " (level " .. (level < 0 and "??" or level) .. ")"
+    if not level then return L("killed_by", killer) end
+    return L("killed_by_level", killer, level < 0 and "??" or level)
 end
 
 -------------------------------------------------------------------------------
@@ -332,16 +438,20 @@ end
 local window, rows = nil, {}
 
 local function FormatSeen(m)
-    if m.online then return "|cff00ff00online|r" end
+    if m.online then return "|cff00ff00" .. L("online") .. "|r" end
     if not m.lastSeen then return "-" end
     local diff = time() - m.lastSeen
-    if diff < 3600 then return math.floor(diff / 60) .. " min" end
-    if diff < 86400 then return math.floor(diff / 3600) .. " h" end
-    return math.floor(diff / 86400) .. " d"
+    if diff < 3600 then return L("seen_min", math.floor(diff / 60)) end
+    if diff < 86400 then return L("seen_hours", math.floor(diff / 3600)) end
+    return L("seen_days", math.floor(diff / 86400))
 end
+
+local HEADERS = { "col_name", "col_level", "col_zone", "col_seen", "col_deaths" }
 
 local function RefreshWindow()
     if not window or not window:IsShown() then return end
+    for c, key in ipairs(HEADERS) do window.headers[c]:SetText(L(key)) end
+    window.optionsButton:SetText(L("options_button"))
 
     local list = {}
     for name, m in pairs(db.members) do
@@ -380,12 +490,12 @@ local function RefreshWindow()
         row.cols[3]:SetText(m.zone or "")
         row.cols[4]:SetText(FormatSeen(m))
         row.cols[5]:SetText(m.deaths and m.deaths > 0
-            and (m.deaths .. (m.deaths == 1 and " death" or " deaths")) or "")
+            and L(m.deaths == 1 and "death_count_one" or "death_count", m.deaths) or "")
         row:Show()
     end
     for i = #list + 1, #rows do rows[i]:Hide() end
     child:SetHeight(math.max(1, #list * 16))
-    window.count:SetText(#list .. " members  (|cff33ff99*|r = has the addon)")
+    window.count:SetText(L("member_count", #list))
 end
 
 local function CreateWindow()
@@ -404,12 +514,12 @@ local function CreateWindow()
     window.title:SetPoint("TOP", 0, -6)
     window.title:SetText("Wall of Shame Forever")
 
-    local headers = { "Name", "Lvl", "Zone", "Last seen", "Deaths" }
+    window.headers = {}
     local x = { 0, 150, 195, 345, 425 }
     for c = 1, 5 do
         local h = window:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetPoint("TOPLEFT", 16 + x[c], -32)
-        h:SetText(headers[c])
+        window.headers[c] = h
     end
 
     window.scroll = CreateFrame("ScrollFrame", nil, window, "UIPanelScrollFrameTemplate")
@@ -421,6 +531,11 @@ local function CreateWindow()
 
     window.count = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     window.count:SetPoint("BOTTOMLEFT", 16, 10)
+
+    window.optionsButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
+    window.optionsButton:SetSize(110, 20)
+    window.optionsButton:SetPoint("BOTTOMRIGHT", -12, 6)
+    window.optionsButton:SetScript("OnClick", function() ToggleOptions(true) end)
 
     window:SetScript("OnShow", function()
         RequestRoster()
@@ -499,9 +614,9 @@ local function OnOwnLevelUp(newLevel)
     local me = Member(playerName)
     me.level, me.zone, me.class, me.hasAddon = newLevel, zone, classFile, true
     Send(table.concat({ "L", newLevel, zone, classFile }, "|"))
-    AddLog("You reached level " .. newLevel)
+    AddLog(L("log_own_level", newLevel))
     if db.announceGuild and IsInGuild() then
-        SendChatMessage(ShortName(playerName) .. " has reached level " .. newLevel .. "!", "GUILD")
+        SendChatMessage(L("guild_level_up", ShortName(playerName), newLevel), "GUILD")
     end
     if db.selfBanner then
         ShowBanner("level", ShortName(playerName), classFile, newLevel, zone)
@@ -583,13 +698,32 @@ local function IsGuildmate(name)
     return IsInGuild() or m.hasAddon == true
 end
 
+-- Duel lost against a guildmate: the loser tells the guild, everyone gets the banner
+local function OnDuelLost(winner)
+    local zone = GetRealZoneText() or ""
+    local winnerClass = db.members[ShortName(winner)] and db.members[ShortName(winner)].class
+    -- the loser draws the French sentence, so every guildmate shows the same one
+    local variant = math.random(#ns.LOCALES.fr.banner_duel_variants)
+    Send(table.concat({ "U", ShortName(winner), zone, winnerClass or "", variant }, "|"))
+    AddLog(L("log_own_duel_lost", ShortName(winner)))
+    if db.selfBanner then
+        local _, classFile = UnitClass("player")
+        ShowBanner("duel", ShortName(playerName), classFile, nil, zone, ShortName(winner), winnerClass, variant)
+    end
+end
+
 local function OnSystemMessage(msg)
     local winner, loser = DuelResult(msg or "")
-    if not winner or ShortName(winner) ~= ShortName(playerName) or not IsGuildmate(loser) then return end
+    if not winner then return end
+    if ShortName(loser) == ShortName(playerName) and IsGuildmate(winner) then
+        OnDuelLost(winner)
+        return
+    end
+    if ShortName(winner) ~= ShortName(playerName) or not IsGuildmate(loser) then return end
     -- on the strip too: posted right away, with a screenshot of the winner's screen
     local payload = QueueScore("W", { ShortName(loser), GetRealZoneText() or "" })
     if payload then ns.ShowStrip(payload) end
-    AddLog("You won a duel against " .. ShortName(loser))
+    AddLog(L("log_duel_won", ShortName(loser)))
 end
 
 -- Killing blow on a hostile player (the other faction)
@@ -600,7 +734,7 @@ OnKillingBlow = function(guid, victim, flags)
     local _, victimClass = GetPlayerInfoByGUID(guid)
     local level = FindUnitLevel(guid)
     QueueScore("K", { ShortName(victim) or "", level and tostring(level) or "", victimClass or "", GetRealZoneText() or "" })
-    AddLog("Killing blow on " .. (ShortName(victim) or "?"))
+    AddLog(L("log_killing_blow", ShortName(victim) or "?"))
 end
 
 local function OnOwnDeath()
@@ -610,10 +744,13 @@ local function OnOwnDeath()
     local me = Member(playerName)
     me.deaths = (me.deaths or 0) + 1
     -- killer fields at the end: older versions just ignore them
-    Send(table.concat({ "D", level, zone, classFile, me.deaths, killer, killerLevel }, "|"))
-    AddLog("You died (level " .. level .. ", " .. zone .. KillerText(killer, killerLevel) .. ")")
+    -- French sentence for a fall, drowning, lava or fire: drawn here, the same for everyone
+    local envSentences = ns.LOCALES.fr.banner_death_env[killer]
+    local variant = envSentences and math.random(#envSentences) or nil
+    Send(table.concat({ "D", level, zone, classFile, me.deaths, killer, killerLevel, variant or "" }, "|"))
+    AddLog(L("log_own_death", level, zone, KillerText(killer, killerLevel)))
     if db.selfBanner then
-        ShowBanner("death", ShortName(playerName), classFile, level, zone)
+        ShowBanner("death", ShortName(playerName), classFile, level, zone, killer, nil, variant)
     end
     if db.discord and db.connection then
         QueueForDiscord(level, zone, classFile, killer, killerLevel)
@@ -627,7 +764,7 @@ local function ReadConnection()
     if code and code ~= db.connection then
         local first = db.connection == nil
         db.connection, db.codeRemoved = code, nil
-        if first and db.discord then Print("Discord deaths are set up for your guild.") end
+        if first and db.discord then Print(L("discord_ready")) end
         QueueLevel(UnitLevel("player"))
     end
 end
@@ -636,7 +773,7 @@ local function OnAddonMessage(text, sender)
     if not sender then return end
     local isSelf = ShortName(sender) == ShortName(playerName)
 
-    local kind, a, b, c, d, e, f = strsplit("|", text)
+    local kind, a, b, c, d, e, f, g = strsplit("|", text)
     local m = Member(sender)
     m.hasAddon, m.online, m.lastSeen, m.inGuild = true, true, time(), true
 
@@ -657,8 +794,8 @@ local function OnAddonMessage(text, sender)
         m.level, m.zone, m.class = level or m.level, b, (c ~= "" and c) or m.class
         if not isSelf and level then
             local who = ClassColored(ShortName(sender), m.class)
-            Print(who .. " has reached level " .. level .. "! (" .. (b or "") .. ")")
-            AddLog(ShortName(sender) .. " reached level " .. level)
+            Print(L("chat_level_up", who, level, b or ""))
+            AddLog(L("log_level", ShortName(sender), level))
             ShowBanner("level", ShortName(sender), m.class, level, b)
         end
     elseif kind == "D" then
@@ -668,9 +805,19 @@ local function OnAddonMessage(text, sender)
         if not isSelf then
             local who = ClassColored(ShortName(sender), m.class)
             local killedBy = KillerText(e, f)
-            Print("|cffff3333Death:|r " .. who .. " (level " .. (a or "?") .. ") has died - " .. (b or "") .. killedBy)
-            AddLog(ShortName(sender) .. " died (level " .. (a or "?") .. ", " .. (b or "") .. killedBy .. ")")
-            ShowBanner("death", ShortName(sender), m.class, a, b)
+            Print(L("chat_death", who, a or "?", b or "", killedBy))
+            AddLog(L("log_death", ShortName(sender), a or "?", b or "", killedBy))
+            ShowBanner("death", ShortName(sender), m.class, a, b, e, nil, tonumber(g)) -- g: sentence number
+        end
+    elseif kind == "U" then
+        -- sender lost a duel against a (guildmate) winner: a = winner, b = zone, c = winner class,
+        -- d = number of the French sentence
+        if not isSelf and a and a ~= "" then
+            local winnerClass = (c ~= "" and c) or (db.members[a] and db.members[a].class)
+            Print(L("chat_duel_lost", ClassColored(ShortName(sender), m.class), ClassColored(a, winnerClass),
+                (b and b ~= "") and (" (" .. b .. ")") or ""))
+            AddLog(L("log_duel_lost", ShortName(sender), a))
+            ShowBanner("duel", ShortName(sender), m.class, nil, b, a, winnerClass, tonumber(d))
         end
     end
     RefreshWindow()
@@ -695,8 +842,8 @@ local function OnRosterUpdate()
             -- Detect level-ups from members WITHOUT the addon (chat line only, no popup)
             if rosterReady and not m.hasAddon and old > 0 and level and level > old
                 and ShortName(name) ~= ShortName(playerName) then
-                Print(ClassColored(ShortName(name), classFile) .. " has reached level " .. level .. "!")
-                AddLog(ShortName(name) .. " reached level " .. level)
+                Print(L("guild_level_up", ClassColored(ShortName(name), classFile), level))
+                AddLog(L("log_level", ShortName(name), level))
             end
             m.level = level or old
             m.class = classFile or m.class
@@ -767,7 +914,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
             local statusLevel, statusZone, statusClass = MyStatus()
             Send(table.concat({ "S", statusLevel, statusZone, statusClass, Member(playerName).deaths or 0 }, "|"))
         end)
-        Print("loaded. |cffffff00/wos|r opens the guild roster, |cffffff00/wos help|r lists all commands.")
+        Print(L("loaded"))
+        pcall(RegisterGameOptions)
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
@@ -800,7 +948,211 @@ end)
 
 local function Toggle(key, label)
     db[key] = not db[key]
-    Print(label .. ": " .. (db[key] and "|cff00ff00on|r" or "|cffff3333off|r"))
+    Print(L(label) .. ": " .. L(db[key] and "on" or "off"))
+    RefreshOptions()
+end
+
+-- language option: "auto", "en" or "fr"
+SetLanguage = function(lang)
+    db.language = lang
+    Print(L("lang_set", L("lang_" .. lang)))
+    RefreshWindow()
+    RefreshOptions()
+end
+
+-------------------------------------------------------------------------------
+-- Options panel (/wos options, button in the roster window, game menu > Options > AddOns)
+-------------------------------------------------------------------------------
+
+local options
+
+local function TestBanners()
+    local _, classFile = UnitClass("player")
+    ShowBanner("level", ShortName(playerName), classFile, 13, GetRealZoneText())
+    C_Timer.After(1.5, function()
+        ShowBanner("death", ShortName(playerName), classFile, 11, GetRealZoneText(), "Hogger")
+    end)
+    C_Timer.After(3, function()
+        ShowBanner("duel", ShortName(playerName), classFile, nil, GetRealZoneText(), "Grumbar", "WARRIOR")
+    end)
+end
+
+local function Heading(parent, y)
+    local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    h:SetPoint("TOPLEFT", 16, y)
+    return h
+end
+
+-- Check box bound to db[key]; onChange runs after the value is saved
+local function CheckBox(parent, x, y, onClick)
+    local cb = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    cb:SetSize(26, 26)
+    cb:SetPoint("TOPLEFT", x, y)
+    cb.label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    cb.label:SetPoint("LEFT", cb, "RIGHT", 2, 1)
+    cb:SetScript("OnClick", onClick)
+    return cb
+end
+
+local function Checked(cb)
+    return cb:GetChecked() and true or false -- 1/nil on older clients
+end
+
+local function CreateOptions()
+    options = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent, "BasicFrameTemplateWithInset")
+    options:SetSize(360, 350)
+    options:SetPoint("CENTER")
+    options:SetMovable(true)
+    options:EnableMouse(true)
+    options:RegisterForDrag("LeftButton")
+    options:SetScript("OnDragStart", options.StartMoving)
+    options:SetScript("OnDragStop", options.StopMovingOrSizing)
+    options:SetFrameStrata("DIALOG")
+    tinsert(UISpecialFrames, "WallOfShameForeverOptions") -- closes with Escape
+
+    options.title = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    options.title:SetPoint("TOP", 0, -6)
+
+    options.checks = {}
+    local function Bound(key, x, y)
+        local cb = CheckBox(options, x, y, function(self)
+            db[key] = Checked(self)
+            RefreshOptions()
+        end)
+        cb.key = key
+        options.checks[#options.checks + 1] = cb
+        return cb
+    end
+
+    -- Banners: all of them (and their sound), or only your own
+    options.bannersHeading = Heading(options, -34)
+    options.popups = Bound("popups", 20, -52)
+    options.selfBanner = Bound("selfBanner", 20, -76)
+
+    -- Sound
+    options.soundHeading = Heading(options, -112)
+    options.sound = Bound("sound", 20, -130)
+    options.volumeLabel = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    options.volumeLabel:SetPoint("TOPLEFT", 26, -164)
+    local slider = CreateFrame("Slider", nil, options)
+    slider:SetOrientation("HORIZONTAL")
+    slider:SetSize(180, 16)
+    slider:SetPoint("TOPLEFT", 130, -162)
+    slider:SetMinMaxValues(VOLUMES[1], VOLUMES[#VOLUMES])
+    slider:SetValueStep(20)
+    if slider.SetObeyStepOnDrag then slider:SetObeyStepOnDrag(true) end
+    slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    slider.track = slider:CreateTexture(nil, "BACKGROUND")
+    slider.track:SetPoint("LEFT", 4, 0)
+    slider.track:SetPoint("RIGHT", -4, 0)
+    slider.track:SetHeight(6)
+    slider.track:SetColorTexture(0, 0, 0, 0.6)
+    slider.value = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    slider.value:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+    slider:SetScript("OnValueChanged", function(self, value)
+        local volume = SnapVolume(value)
+        self.value:SetText(volume .. " %")
+        if self.refreshing or volume == db.volume then return end
+        db.volume = volume
+        -- preview at the new volume, at most every 0.3 s while dragging
+        local now = GetTime()
+        if db.popups and db.sound and (not self.lastPreview or now - self.lastPreview > 0.3) then
+            self.lastPreview = now
+            PlayBannerSound("level")
+        end
+    end)
+    options.volume = slider
+
+    -- Language
+    options.languageHeading = Heading(options, -200)
+    options.languages = {}
+    for i, lang in ipairs({ "auto", "fr", "en" }) do
+        local cb = CheckBox(options, 20, -218 - (i - 1) * 24, function()
+            SetLanguage(lang)
+        end)
+        cb.lang = lang
+        options.languages[i] = cb
+    end
+
+    options.test = CreateFrame("Button", nil, options, "UIPanelButtonTemplate")
+    options.test:SetSize(200, 24)
+    options.test:SetPoint("BOTTOM", 0, 16)
+    options.test:SetScript("OnClick", TestBanners)
+
+    options:SetScript("OnShow", function() RefreshOptions() end)
+    options:Hide()
+end
+
+-- greyed out and not clickable when it has no effect
+local function SetActive(active, ...)
+    for i = 1, select("#", ...) do
+        local widget = select(i, ...)
+        widget:SetAlpha(active and 1 or 0.4)
+        if widget.EnableMouse then widget:EnableMouse(active and true or false) end
+    end
+end
+
+-- Texts in the current language and every control from the saved settings
+RefreshOptions = function()
+    if not options or not options:IsShown() then return end
+    options.title:SetText(L("options_title"))
+    options.bannersHeading:SetText(L("sect_banners"))
+    options.soundHeading:SetText(L("sect_sound"))
+    options.languageHeading:SetText(L("sect_language"))
+    local labels = { popups = "opt_popups", selfBanner = "opt_self", sound = "opt_sound" }
+    for _, cb in ipairs(options.checks) do
+        cb.label:SetText(L(labels[cb.key]))
+        cb:SetChecked(db[cb.key] and true or false)
+    end
+    options.volumeLabel:SetText(L("opt_volume"))
+    options.volume.refreshing = true
+    options.volume:SetValue(db.volume)
+    options.volume.value:SetText(db.volume .. " %")
+    options.volume.refreshing = false
+    -- no banners: no own banners and no sound either; no sound: no volume
+    SetActive(db.popups, options.selfBanner, options.selfBanner.label, options.soundHeading,
+        options.sound, options.sound.label)
+    SetActive(db.popups and db.sound, options.volume, options.volumeLabel, options.volume.value)
+    for _, cb in ipairs(options.languages) do
+        cb.label:SetText(L(cb.lang == "auto" and "lang_auto" or ("lang_" .. cb.lang)))
+        cb:SetChecked(db.language == cb.lang)
+    end
+    options.test:SetText(L("btn_test"))
+end
+
+ToggleOptions = function(show)
+    if not options then CreateOptions() end
+    if show == nil then show = not options:IsShown() end
+    if show then options:Show() else options:Hide() end
+end
+
+-- Game menu > Options > AddOns: a page with a button to our panel (the panel stays our own,
+-- so it looks the same on every client)
+RegisterGameOptions = function()
+    local page = CreateFrame("Frame")
+    page.name = "Wall of Shame Forever"
+    local title = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", 16, -16)
+    title:SetText("Wall of Shame Forever")
+    local open = CreateFrame("Button", nil, page, "UIPanelButtonTemplate")
+    open:SetSize(220, 26)
+    open:SetPoint("TOPLEFT", 16, -50)
+    open:SetScript("OnClick", function()
+        if SettingsPanel and SettingsPanel.IsShown and SettingsPanel:IsShown() then HideUIPanel(SettingsPanel) end
+        if InterfaceOptionsFrame and InterfaceOptionsFrame.IsShown and InterfaceOptionsFrame:IsShown() then
+            HideUIPanel(InterfaceOptionsFrame)
+        end
+        if GameMenuFrame and GameMenuFrame.IsShown and GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame) end
+        ToggleOptions(true)
+    end)
+    page:SetScript("OnShow", function() open:SetText(L("btn_open_options")) end)
+    open:SetText(L("btn_open_options"))
+    if type(Settings) == "table" and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(page, page.name)
+        Settings.RegisterAddOnCategory(category)
+    elseif InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(page)
+    end
 end
 
 SLASH_WALLOFSHAMEFOREVER1 = "/wos"
@@ -810,7 +1162,7 @@ local GUILD_INFO_MAX = 500
 -- Officers: put the bot's code in the guild information, where every member's addon reads it
 local function SetConnection(code)
     if not code:match("^" .. CODE_PATTERN .. "$") then
-        Print("This is not a valid code: copy it again from the bot on Discord.")
+        Print(L("code_invalid"))
         return
     end
     if not IsInGuild() then
@@ -818,12 +1170,11 @@ local function SetConnection(code)
         db.connection, db.guildName, db.codeRemoved = code, nil, nil
         UpdateChannel()
         QueueLevel(UnitLevel("player"))
-        Print("Code saved: deaths are shared with everyone who pasted it, in game and on Discord. "
-            .. "Type /reload once so the companion gets it.")
+        Print(L("code_saved_solo"))
         return
     end
     if not (CanEditGuildInfo and CanEditGuildInfo() and SetGuildInfoText) then
-        Print("Only members allowed to edit the guild information can set the code.")
+        Print(L("code_no_rights"))
         return
     end
     local info = GetGuildInfoText() or ""
@@ -834,12 +1185,12 @@ local function SetConnection(code)
         newInfo = (info ~= "" and (info .. "\n") or "") .. "Code companion: " .. code
     end
     if #newInfo > GUILD_INFO_MAX then
-        Print("The guild information is too long: shorten it, then try again.")
+        Print(L("guild_info_too_long"))
         return
     end
     SetGuildInfoText(newInfo)
     db.connection, db.codeRemoved = code, nil
-    Print("Code saved in the guild information: every member gets it automatically.")
+    Print(L("code_saved_guild"))
 end
 
 SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
@@ -851,33 +1202,49 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
     elseif msg == "" then
         ToggleWindow()
     elseif msg == "log" then
-        Print("Recent events:")
+        Print(L("recent_events"))
         for i = 1, math.min(20, #db.log) do
             DEFAULT_CHAT_FRAME:AddMessage("  " .. db.log[i])
         end
-        if #db.log == 0 then DEFAULT_CHAT_FRAME:AddMessage("  (nothing yet)") end
+        if #db.log == 0 then DEFAULT_CHAT_FRAME:AddMessage("  " .. L("nothing_yet")) end
     elseif msg == "guild" then
-        Toggle("announceGuild", "Level-ups in guild chat")
+        Toggle("announceGuild", "opt_guild")
     elseif msg == "popup" then
-        Toggle("popups", "On-screen banners")
+        Toggle("popups", "opt_popups")
     elseif msg == "self" then
-        Toggle("selfBanner", "Own banners")
+        Toggle("selfBanner", "opt_self")
     elseif msg == "sound" then
-        Toggle("sound", "Sound")
+        Toggle("sound", "opt_sound")
+    elseif msg == "lang" or msg == "langue" or msg:match("^langu?e?%s") then
+        local lang = msg:match("%s+(%a+)$")
+        if lang == "auto" or lang == "en" or lang == "fr" then
+            SetLanguage(lang)
+        else
+            Print(L("lang_set", L("lang_" .. db.language)))
+            Print(L("lang_usage"))
+        end
+    elseif msg == "options" or msg == "option" or msg == "config" or msg == "settings" then
+        ToggleOptions()
+    elseif msg == "volume" or msg:match("^volume%s") then
+        local value = tonumber(msg:match("%s+(%d+)$"))
+        if value and value >= 1 and value <= 100 then
+            db.volume = SnapVolume(value)
+            Print(L("volume_set", db.volume))
+            RefreshOptions()
+        else
+            Print(L("volume_set", db.volume))
+            Print(L("volume_usage"))
+        end
     elseif msg == "test" then
-        local _, classFile = UnitClass("player")
-        ShowBanner("level", ShortName(playerName), classFile, 13, GetRealZoneText())
-        C_Timer.After(1.5, function()
-            ShowBanner("death", ShortName(playerName), classFile, 11, GetRealZoneText())
-        end)
+        TestBanners()
     elseif msg == "sync" then
         RequestRoster()
         Send("H")
-        Print("Requested the current state from the guild.")
+        Print(L("sync_requested"))
     elseif msg == "discord" then
-        Toggle("discord", "Own deaths to Discord (needs the companion program)")
+        Toggle("discord", "opt_discord")
         if not db.connection then
-            Print("Not set up for your guild yet: an officer types /wos code <code from the bot>.")
+            Print(L("discord_not_set"))
         end
     elseif msg == "flush" then
         ReloadUI() -- WoW only writes SavedVariables on reload or logout
@@ -890,22 +1257,9 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         else
             ns.ShowStrip(DeathPayload("test:" .. time(), level, zone, classFile, "Test Dummy", "-1"))
         end
-        Print("Test strip shown for 3 seconds: the bot posts a TEST card (bot admins only), deleted after a minute.")
+        Print(L("strip_test"))
     else
-        Print("Commands:")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos - open/close the guild roster")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos log - last 20 level-ups and deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos guild - toggle own level-ups in guild chat")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos popup - toggle on-screen banners")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos self - toggle banners for your own level-ups and deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos sound - toggle sound")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos sync - request the current state from the guild")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos test - preview banners and sound")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos discord - toggle sending own deaths to Discord (on by default)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos code <code> - officers: set the Discord bot's code for the whole guild")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos flush - reload the UI so the companion gets pending deaths")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest - send a test death through the companion (bot admins only)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest level - send a test level-up through the companion (bot admins only)")
-        DEFAULT_CHAT_FRAME:AddMessage("  /wos striptest duel - send a test duel win through the companion (bot admins only)")
+        Print(L("commands"))
+        for _, line in ipairs(L("help")) do DEFAULT_CHAT_FRAME:AddMessage("  " .. line) end
     end
 end

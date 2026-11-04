@@ -12,15 +12,18 @@ INSTALLATION
 ==================================================================
 WHAT IT DOES
 - When someone with the addon levels up, everyone sees a chat line and a
-  gothic banner on EVERY level: golden thorn frame with pointed-arch crown and
-  rosette, class medallion, Fraktur lettering, plus the level-up fanfare.
-- On death: black iron banner with blood, skull and its own sound.
+  golden banner on EVERY level, with its own sound.
+- On death: bloody red banner with a skull and its own sound.
+- Duel lost against a guildmate: iron banner with broken swords for the loser,
+  seen by the whole guild, with its own sound.
 - Every own level-up is posted automatically in guild chat
   (visible to people without the addon too).
 - When someone with the addon dies, all guildmates with the addon see a death
   notice with level and zone. Deaths are only shared inside your own guild.
 - Level-ups of members WITHOUT the addon are detected as soon as the game
   refreshes the guild roster (chat line only; their deaths cannot be seen).
+- English and French: follows the game client, or /wos lang en|fr
+  (also in /wos options).
 - /wos opens a list of all members: name, level, zone, last seen, deaths.
 - Death notices show the killer and its level when the game knows them.
 - Leaderboard on the guild's Discord: duels won against guildmates and killing blows
@@ -30,11 +33,15 @@ WHAT IT DOES
 ==================================================================
 COMMANDS
 /wos         open/close the guild roster
+/wos options open/close the options (also: Options button in the roster,
+             game menu > Options > AddOns)
 /wos log     last 20 level-ups and deaths
 /wos guild   toggle own level-ups in guild chat
-/wos popup   toggle banners
-/wos self    toggle banners for your own level-ups and deaths
+/wos popup   toggle all banners (and their sound)
+/wos self    toggle banners for your own level-ups, deaths and lost duels
 /wos sound   toggle sound
+/wos volume 20|40|60|80|100  volume of the banner sounds
+/wos lang auto|en|fr  addon language (auto = language of the game client, default)
 /wos sync    request the current state from the guild
 /wos test    preview banners and sound (only visible to you)
 /wos discord toggle sending your own deaths to Discord (on by default)
@@ -59,5 +66,5 @@ Wall of Shame Forever uses its own network: it does not see Memento Forever user
 so everyone in the guild needs Wall of Shame Forever.
 ==================================================================
 FONT
-The Fraktur font in the media folder is "UnifrakturMaguntia" under the
-SIL Open Font License 1.1 (see media/Unifraktur-OFL.txt).
+The banner font in the media folder is "Lilita One" by Juan Montoreano under the
+SIL Open Font License 1.1 (see media/LilitaOne-OFL.txt).

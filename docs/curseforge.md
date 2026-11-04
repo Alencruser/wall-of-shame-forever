@@ -2,7 +2,7 @@
 
 ## Summary (short description field)
 
-Shares every level-up and death of your guild with gothic banners, and can post them on your guild's Discord with screenshots, duels and a PvP ranking.
+Shares every level-up and death of your guild with on-screen banners, and can post them on your guild's Discord with screenshots, duels and a PvP ranking.
 
 ## Description
 
@@ -14,12 +14,15 @@ Made for **WoW Forever**. Everyone in the guild installs the addon.
 
 ## In game
 
-- **Level-ups**: a gothic banner with the class emblem, a chat line and the level-up fanfare, for every level of every guildmate. Your own level-ups are posted in guild chat too.
-- **Deaths**: a black iron banner with blood and a skull, its own sound, and a chat line with the level, the zone and **who killed them** (with its level; falls, drowning and lava count too).
+- **Level-ups**: a golden banner with its own sound, a chat line, for every level of every guildmate. Your own level-ups are posted in guild chat too.
+- **Deaths**: a bloody red banner with a skull, its own sound, and a chat line with the level, the zone and **who killed them** (with its level; falls, drowning and lava count too).
+- **Duels lost against a guildmate**: an iron banner with broken swords and its own sound for the loser, on everyone's screen.
 - **Guild roster** (`/wos`): name, level, zone, last seen and number of deaths of every member.
 - **No guild yet?** `/wos code <code>` shares deaths with everyone who pasted the same code, until the guild exists.
 
 Deaths are only shared inside your own guild.
+
+**English and French**: the addon follows your game client's language. Prefer the other one? `/wos lang en` or `/wos lang fr`, or the Language setting in `/wos options`.
 
 ## On Discord (optional)
 
@@ -41,11 +44,14 @@ Privacy: only **your own** events are sent, to **your guild's** bot, with your c
 | Command | |
 |---|---|
 | `/wos` | open the guild roster |
+| `/wos options` | open the options: all banners or only your own, sound and its volume, language, test button (also in the game menu > Options > AddOns) |
 | `/wos log` | last 20 level-ups and deaths |
 | `/wos guild` | toggle your level-ups in guild chat |
-| `/wos popup` | toggle banners |
-| `/wos self` | toggle banners for your own level-ups and deaths |
+| `/wos popup` | toggle all banners (and their sound) |
+| `/wos self` | toggle banners for your own level-ups, deaths and lost duels |
 | `/wos sound` | toggle sound |
+| `/wos volume 20\|40\|60\|80\|100` | volume of the banner sounds |
+| `/wos lang auto\|en\|fr` | addon language: auto follows the game client (default), or force English or French |
 | `/wos test` | preview the banners |
 | `/wos code <code>` | officers: set the Discord code for the guild (without a guild: your own) |
 | `/wos discord` | toggle sending your events to Discord |
@@ -54,4 +60,4 @@ Privacy: only **your own** events are sent, to **your guild's** bot, with your c
 
 ## Credits
 
-Based on **Memento Forever** by **alexauer** (MIT license), translated to English and extended. The Fraktur font is UnifrakturMaguntia (SIL Open Font License 1.1). Released under the MIT license.
+Based on **Memento Forever** by **alexauer** (MIT license), translated to English and extended. The banner font is Lilita One by Juan Montoreano (SIL Open Font License 1.1). Released under the MIT license.
