@@ -24,20 +24,23 @@ def fletcher16(data):
     return a, b
 
 
-def decode(img):
-    """Return (payload, strip_height) from an RGB PIL image whose top-left corner is the
-    top-left corner of the WoW client area, or None when there is no valid strip."""
+def decode(img, ox=0, oy=0, block_size=BLOCK):
+    """Return (payload, strip_bottom) from an RGB PIL image where the strip starts at (ox, oy),
+    or None when there is no valid strip. block_size: size of a block in the image's pixels
+    (BLOCK, or another size when the capture is not in physical pixels, e.g. macOS Retina).
+    strip_bottom: first row under the strip."""
     width, height = img.size
-    if width < WIDTH or height < BLOCK:
+    if width < ox + COLS * block_size or height < oy + block_size:
         return None
     px = img.load()
+    half = block_size / 2
 
     def sample(i):
         col, row = i % COLS, i // COLS
-        y = row * BLOCK + BLOCK // 2
+        y = int(oy + row * block_size + half)
         if y >= height:
             raise IndexError(i)
-        return px[col * BLOCK + BLOCK // 2, y][:3]
+        return px[int(ox + col * block_size + half), y][:3]
 
     calib = [sample(i) for i in range(4)]
     for c in range(3):
@@ -76,4 +79,17 @@ def decode(img):
         return None
 
     blocks = HEADER_BLOCKS + -(-len(digits) // 3)
-    return payload.decode("utf-8", errors="replace"), -(-blocks // COLS) * BLOCK
+    return payload.decode("utf-8", errors="replace"), int(oy + -(-blocks // COLS) * block_size + 0.999)
+
+
+def locate(img, block_size, max_dx, max_dy):
+    """Look for the strip near the top-left corner of img: on macOS the capture starts at the window
+    frame (title bar included), not at the game's first pixel. Same result as decode."""
+    for oy in range(max_dy + 1):
+        for ox in range(max_dx + 1):
+            found = decode(img, ox, oy, block_size)
+            if found:
+                # the first hit is half a block early (the sample point enters the first block)
+                payload, bottom = found
+                return payload, bottom + int(block_size / 2 + 0.999)
+    return None

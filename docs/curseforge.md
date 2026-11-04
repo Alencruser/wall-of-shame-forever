@@ -2,7 +2,7 @@
 
 ## Summary (short description field)
 
-Every level-up and death of your guild, with gothic banners. Optional Discord wall of shame: deaths with a screenshot, level-ups, duels and a PvP ranking.
+Shares every level-up and death of your guild with gothic banners, and can post them on your guild's Discord with screenshots, duels and a PvP ranking.
 
 ## Description
 
@@ -23,7 +23,7 @@ Deaths are only shared inside your own guild.
 
 ## On Discord (optional)
 
-With your guild's Discord bot and the Windows companion program:
+With your guild's Discord bot and the companion program (Windows and macOS):
 
 - your **deaths** and **level-ups** are posted with a screenshot of your screen at that moment
 - **duels won against guildmates** are posted with the winner's screenshot, both players mentioned

@@ -23,8 +23,9 @@ def lua_encoder():
     return ns.EncodeStrip
 
 
-def render(blocks, size=(800, 600), gamma=1.0, noise=0, seed=0):
-    """Draw the blocks like the addon does, on a random 'game' background."""
+def render(blocks, size=(800, 600), gamma=1.0, noise=0, seed=0, block_px=strip.BLOCK, origin=(0, 0)):
+    """Draw the blocks like the addon does, on a random 'game' background (origin: where the strip
+    starts, e.g. under a macOS title bar; block_px: block size in the image's pixels)."""
     rnd = random.Random(seed)
     img = Image.new("RGB", size)
     px = img.load()
@@ -37,9 +38,9 @@ def render(blocks, size=(800, 600), gamma=1.0, noise=0, seed=0):
             max(0, min(255, round(255 * (level / 3) ** gamma) + rnd.randint(-noise, noise)))
             for level in block
         )
-        for dy in range(strip.BLOCK):
-            for dx in range(strip.BLOCK):
-                px[col * strip.BLOCK + dx, row * strip.BLOCK + dy] = color
+        for dy in range(block_px):
+            for dx in range(block_px):
+                px[origin[0] + col * block_px + dx, origin[1] + row * block_px + dy] = color
     return img
 
 
@@ -75,6 +76,19 @@ class StripTest(unittest.TestCase):
         decoded, height = self.roundtrip(payload)
         self.assertEqual(decoded, payload)
         self.assertLessEqual(height, strip.MAX_HEIGHT)
+
+    def test_macos_offset_and_retina(self):
+        payload = "2|D|Thrall-Forever:1|Thrall|Forever||12|SHAMAN|Durotar|Boar|4|1|"
+        blocks = to_py(self.encode(payload))
+        # capture at 1x of a Retina screen (2 px per block), and at 2x (8 px), under a 28 pt title bar
+        for block, origin in ((2, (3, 28)), (4, (0, 56)), (8, (6, 56))):
+            img = render(blocks, size=(strip.COLS * block + 20, 170), block_px=block, origin=origin, seed=block)
+            found = strip.locate(img, block, 10, 60)
+            self.assertIsNotNone(found, (block, origin))
+            decoded, bottom = found
+            self.assertEqual(decoded, payload)
+            rows = -(-len(blocks) // strip.COLS)
+            self.assertEqual(bottom, origin[1] + rows * block)
 
     def test_no_strip(self):
         self.assertIsNone(strip.decode(render([], seed=5)))

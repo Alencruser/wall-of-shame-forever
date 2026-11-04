@@ -50,6 +50,10 @@ addon -> death strip on screen (realtime) or SavedVariables (fallback) -> compan
       players (PARTY_KILL), `/shamewall salon-classement` keeps one message up to date
 - [x] Duel wins posted right away in their own channel (`/shamewall salon-duels`): winner's screenshot,
       both players mentioned (bot learns character -> battletag from every event)
+- [x] macOS companion (strip and screenshots included): platform layer (platform_win / platform_mac),
+      menu bar app in ~/Applications, login item, Screen Recording permission, Retina, strip searched
+      under the title bar; built by the GitHub Actions workflow (Apple Silicon and Intel)
+- [ ] Test the macOS companion on a real Mac (install, permission, strip on Retina and non-Retina)
 - [ ] Test in game: duel message on a French client, killing blow on an enemy player
 - [ ] Leaderboard: admin reset command (season), maybe a period (week, month)
 - [ ] Test on WoW Classic Era (full chain on one PC), then on Forever

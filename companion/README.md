@@ -152,6 +152,40 @@ Build (`assets/icon.png` and `assets/icon.ico` come from the Bagarre Club logo):
 From source, `python app.py` runs the tray app without installing anything, and
 `python wallofshame_companion.py` the console version (`--dry-run` works with both).
 
+## macOS
+
+Same companion, strip and screenshots included: `WallOfShameCompanion.app`, an icon in the menu
+bar (no Dock icon). Builds for Apple Silicon (`-mac-arm64.zip`) and Intel Macs (`-mac-x86_64.zip`).
+
+- **First launch**: unzip, open the app. It is not signed with an Apple certificate: macOS says
+  it cannot check it. Open **System Settings > Privacy & Security**, click **Open Anyway** next to
+  the message (older macOS: right-click the app > **Open**). The app then copies itself to
+  `~/Applications`, opens at login (`~/Library/LaunchAgents/com.wallofshame.companion.plist`) and
+  starts in the menu bar. The downloaded copy can be deleted.
+- **Screen Recording permission**: macOS asks for it on first launch. Allow the companion in
+  **System Settings > Privacy & Security > Screen Recording**, then quit it from its menu and
+  reopen it (`~/Applications/WallOfShameCompanion.app`). Without it, events still go to Discord on
+  `/reload` or logout, but without screenshots; the menu shows **Allow screen recording…**. After
+  an update, macOS may ask again.
+- **Uninstall**: menu bar icon > **Uninstall…** (removes the app, the login item and
+  `~/Library/Application Support/WallOfShameCompanion`).
+- The WoW window must be the active one, windowed or fullscreen. The strip is searched near the
+  window's corner (title bar included) and Retina screens are handled (2 pixels per point).
+
+The `.app` can only be built on a Mac: the GitHub Actions workflow `companion` builds it (and the
+Windows `.exe`) on GitHub's machines. Actions tab > **companion** > **Run workflow**, then download
+the files from the run; or push a tag `companion-v0.1.0` to publish them in a GitHub Release. On a
+Mac: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+&& .venv/bin/python build.py`.
+
+Private builds with the guild's code built in (`build_private.py`) are Windows only for now: the
+workflow must never get the code, since builds of a public repository can be downloaded. Mac players
+use the public build and paste the code once in game (`/wos code <code>`, then `/reload`), until the
+guild exists; then the officers' code arrives by itself.
+
+The system-specific code is in `platform_win.py` and `platform_mac.py` (same functions, picked by
+`osplat.py`); everything else is shared.
+
 ## Tests
 
 ```

@@ -11,6 +11,14 @@ Installe **Wall of Shame Forever** depuis CurseForge : <lien CurseForge>
 • Windows affiche « Windows a protégé votre ordinateur » : clique **Informations complémentaires** puis **Exécuter quand même**
 • C'est tout : pas de code à taper, tout est déjà réglé
 
+**Sur Mac** 🍎
+• Télécharge le zip Mac épinglé : `-mac-arm64` pour les Mac M1, M2, M3…, `-mac-x86_64` pour les Mac Intel (menu Pomme > À propos de ce Mac)
+• Ouvre le zip puis l'app : macOS refuse la première fois. Va dans **Réglages Système > Confidentialité et sécurité** et clique **Ouvrir quand même**
+• L'app s'installe dans ton dossier Applications, s'ouvre à chaque démarrage et se met dans la barre de menus (en haut à droite)
+• macOS demande l'**Enregistrement de l'écran** : autorise-le (Réglages Système > Confidentialité et sécurité > Enregistrement de l'écran), puis quitte l'app depuis son icône et relance-la. Sans ça, pas de capture d'écran
+• En jeu, une seule fois : `/wos code ` suivi du code épinglé, puis `/reload` (pas besoin une fois la guilde créée)
+• Pour la désinstaller : icône dans la barre de menus > **Uninstall…**
+
 **Bon à savoir**
 • Joue en **fenêtré** ou **plein écran fenêtré**, sinon la capture sort noire
 • Mets ton battletag dans `#battletags` : le bot te mentionne et affiche ton niveau

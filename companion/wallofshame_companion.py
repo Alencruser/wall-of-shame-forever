@@ -6,7 +6,6 @@ Two sources, both deduplicated on the event id:
 - fallback: the outbox in SavedVariables, written by WoW on /reload, logout or exit
 """
 
-import ctypes
 import glob
 import io
 import json
@@ -17,7 +16,6 @@ import threading
 import time
 import tomllib
 import urllib.parse
-from ctypes import wintypes
 
 import mss
 import requests
@@ -25,6 +23,7 @@ from PIL import Image
 
 import connection
 import events
+import osplat
 import strip
 import wowpath
 
@@ -33,11 +32,12 @@ try:  # private builds only (build_private.py, not in the repository): the guild
 except ImportError:
     BUILTIN_CODE = None
 
-HERE = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
-CONFIG_PATH = os.path.join(HERE, "config.toml")
-STATE_PATH = os.path.join(HERE, "state.json")
-OUT_DIR = os.path.join(HERE, "out")
-LOG_PATH = os.path.join(HERE, "log.txt")
+HERE = osplat.app_dir()        # the .exe / .app (or the sources)
+DATA_DIR = osplat.data_dir()   # Windows: next to the .exe; macOS: ~/Library/Application Support
+CONFIG_PATH = os.path.join(DATA_DIR, "config.toml")
+STATE_PATH = os.path.join(DATA_DIR, "state.json")
+OUT_DIR = os.path.join(DATA_DIR, "out")
+LOG_PATH = os.path.join(DATA_DIR, "log.txt")
 MAX_LOG = 1024 * 1024  # log.txt is cut in half when bigger
 
 STRIP_INTERVAL = 0.2   # the strip stays 3 s on screen
@@ -46,15 +46,15 @@ DETECT_INTERVAL = 30.0 # look again for WoW folders (new install, WoW started)
 MAX_AGE = 24 * 3600    # never send outbox deaths older than this
 MAX_SENT_IDS = 1000
 
-user32 = ctypes.windll.user32
-try:
-    user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per-monitor v2: real pixels
-except AttributeError:
-    user32.SetProcessDPIAware()
+# macOS: the strip is searched this far from the window corner (title bar, frame), in points
+MAC_MARGIN_X, MAC_MARGIN_Y = 8, 48
+PERMISSION_INTERVAL = 10.0  # macOS Screen Recording permission, checked again this often
+
+osplat.init()  # Windows: per-monitor DPI awareness (real pixels)
 
 
 # Short status for the tray icon (see app.py)
-STATUS = {"wow": "looking for WoW...", "bot": "no connection code yet", "last": ""}
+STATUS = {"wow": "looking for WoW...", "bot": "no connection code yet", "last": "", "screen": ""}
 
 
 def log(msg):
@@ -199,40 +199,46 @@ class Sender:
         r.raise_for_status()
 
 
-def wow_client_area():
-    """Screen rectangle of the WoW client area, or None if WoW is not the active window."""
-    hwnd = user32.FindWindowW("GxWindowClass", None) or user32.FindWindowW(None, "World of Warcraft")
-    if not hwnd or user32.GetForegroundWindow() != hwnd:
-        return None
-    rect, origin = wintypes.RECT(), wintypes.POINT(0, 0)
-    user32.GetClientRect(hwnd, ctypes.byref(rect))
-    user32.ClientToScreen(hwnd, ctypes.byref(origin))
-    if rect.right < strip.WIDTH or rect.bottom < strip.MAX_HEIGHT:
-        return None
-    return {"left": origin.x, "top": origin.y, "width": rect.right, "height": rect.bottom}
-
-
 def grab(sct, area):
     shot = sct.grab(area)
     return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
+def read_strip(sct, area):
+    """(payload, strip_bottom in capture pixels, capture pixels per area unit), or None.
+    Windows: the client area in real pixels, the strip right at its corner. macOS: the window
+    bounds in points (title bar included), the strip drawn in physical pixels: searched near the
+    corner, with the block size of the capture (Retina captures can be 1x or 2x)."""
+    if area["exact"]:
+        if area["width"] < strip.WIDTH or area["height"] < strip.MAX_HEIGHT:
+            return None
+        found = strip.decode(grab(sct, dict(area, width=strip.WIDTH, height=strip.MAX_HEIGHT)))
+        return found and (*found, 1.0)
+    scale = area["scale"] or 1.0
+    width = min(area["width"], int(strip.WIDTH / scale) + MAC_MARGIN_X + 1)
+    height = min(area["height"], int(strip.MAX_HEIGHT / scale) + MAC_MARGIN_Y + 1)
+    corner = grab(sct, dict(area, width=width, height=height))
+    per_unit = corner.width / width  # capture pixels per point
+    block = strip.BLOCK * per_unit / scale
+    found = strip.locate(corner, block, int(MAC_MARGIN_X * per_unit), int(MAC_MARGIN_Y * per_unit))
+    return found and (*found, per_unit)
+
+
 def check_strip(sct, state, sender):
-    area = wow_client_area()
+    area = osplat.wow_window()
     if not area:
         return
-    corner = grab(sct, dict(area, width=strip.WIDTH, height=strip.MAX_HEIGHT))
-    found = strip.decode(corner)
+    found = read_strip(sct, area)
     if not found:
         return
-    payload, strip_height = found
+    payload, strip_bottom, _ = found
     ev = events.parse_payload(payload, "realtime")
     if not ev or ev["type"] not in ("death", "level", "duel") or ev["id"] in state:
         return
     state.add(ev["id"])
-    # death or level-up screen, without the strip rows
+    # the game screen, without the strip rows (and on macOS the title bar above them)
     screen = grab(sct, area)
-    screen = screen.crop((0, strip_height, screen.width, screen.height))
+    screen = screen.crop((0, strip_bottom, screen.width, screen.height))
     buf = io.BytesIO()
     screen.save(buf, "JPEG", quality=85)
     if ev["type"] == "level":
@@ -336,10 +342,19 @@ def main(stop=None):
         sender.set_code(cfg["connection"], pinned=True)  # manual override, e.g. to test another bot
 
     game_dirs, mtimes, last_outbox, last_detect = [], {}, 0.0, 0.0
+    capture_ok, last_permission = True, 0.0
     log("companion started")
     with mss.mss() as sct:
         while not stop.is_set():
-            if cfg["realtime"]:
+            if time.time() - last_permission > PERMISSION_INTERVAL:
+                allowed = osplat.screen_capture_allowed()
+                if allowed != capture_ok or not last_permission:
+                    STATUS["screen"] = "" if allowed else "Screen Recording not allowed: no screenshots"
+                    if not allowed:
+                        log("macOS Screen Recording permission missing: events wait for /reload, "
+                            "without screenshots")
+                capture_ok, last_permission = allowed, time.time()
+            if cfg["realtime"] and capture_ok:
                 check_strip(sct, state, sender)
             if time.time() - last_detect > DETECT_INTERVAL:
                 dirs = wowpath.find_game_dirs(cfg["wow_path"], HERE)
