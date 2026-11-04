@@ -24,6 +24,9 @@ WHAT IT DOES
   refreshes the guild roster (chat line only; their deaths cannot be seen).
 - English and French: follows the game client, or /wos lang en|fr
   (also in /wos options).
+- Guild map: guildmates with the addon appear on the world map, other continents
+  included (Azeroth view). Positions every 15 s, only inside the guild. Not in
+  dungeons (last known spot, faded). /wos map or the options hide you.
 - /wos opens a list of all members: name, level, zone, last seen, deaths.
 - Death notices show the killer and its level when the game knows them.
 - Leaderboard on the guild's Discord: duels won against guildmates and killing blows
@@ -40,6 +43,7 @@ COMMANDS
 /wos popup   toggle all banners (and their sound)
 /wos self    toggle banners for your own level-ups, deaths and lost duels
 /wos sound   toggle sound
+/wos map     show/hide yourself on the guild's world map
 /wos volume 20|40|60|80|100  volume of the banner sounds
 /wos lang auto|en|fr  addon language (auto = language of the game client, default)
 /wos sync    request the current state from the guild

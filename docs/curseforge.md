@@ -17,6 +17,7 @@ Made for **WoW Forever**. Everyone in the guild installs the addon.
 - **Level-ups**: a golden banner with its own sound, a chat line, for every level of every guildmate. Your own level-ups are posted in guild chat too.
 - **Deaths**: a bloody red banner with a skull, its own sound, and a chat line with the level, the zone and **who killed them** (with its level; falls, drowning and lava count too).
 - **Duels lost against a guildmate**: an iron banner with broken swords and its own sound for the loser, on everyone's screen.
+- **Guild map**: guildmates with the addon appear on the world map in their class color, other continents included (Azeroth view), with level, zone and the age of the position on hover. Updated every 15 seconds, shared only with your guild. Don't want to be seen? Untick it in `/wos options`.
 - **Guild roster** (`/wos`): name, level, zone, last seen and number of deaths of every member.
 - **No guild yet?** `/wos code <code>` shares deaths with everyone who pasted the same code, until the guild exists.
 
@@ -50,6 +51,7 @@ Privacy: only **your own** events are sent, to **your guild's** bot, with your c
 | `/wos popup` | toggle all banners (and their sound) |
 | `/wos self` | toggle banners for your own level-ups, deaths and lost duels |
 | `/wos sound` | toggle sound |
+| `/wos map` | show/hide yourself on the guild's world map |
 | `/wos volume 20\|40\|60\|80\|100` | volume of the banner sounds |
 | `/wos lang auto\|en\|fr` | addon language: auto follows the game client (default), or force English or French |
 | `/wos test` | preview the banners |

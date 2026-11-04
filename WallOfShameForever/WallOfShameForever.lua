@@ -15,6 +15,7 @@ local DEFAULTS = {
     selfBanner = true,    -- banner for own level-ups, deaths and lost duels too
     sound = true,
     volume = 100,         -- banner sounds: 20, 40, 60, 80 or 100 % (one file per volume, media/sounds)
+    shareLocation = true, -- own position on the guildmates' world map (GuildMap.lua)
     discord = true,       -- own deaths for the companion, once officers set the guild up
     language = "auto",    -- "auto" (game client's language), "en" or "fr": see Locales.lua
 }
@@ -783,6 +784,7 @@ local function OnAddonMessage(text, sender)
             C_Timer.After(math.random() * 5, function()
                 local level, zone, classFile = MyStatus()
                 Send(table.concat({ "S", level, zone, classFile, Member(playerName).deaths or 0 }, "|"))
+                if ns.SendPosition then ns.SendPosition(true) end -- their map gets our pin right away
             end)
         end
     elseif kind == "S" then
@@ -809,6 +811,9 @@ local function OnAddonMessage(text, sender)
             AddLog(L("log_death", ShortName(sender), a or "?", b or "", killedBy))
             ShowBanner("death", ShortName(sender), m.class, a, b, e, nil, tonumber(g)) -- g: sentence number
         end
+    elseif kind == "P" then
+        -- position for the world map (GuildMap.lua)
+        if not isSelf and ns.OnPosition then ns.OnPosition(ShortName(sender), a, b, c, d, e) end
     elseif kind == "U" then
         -- sender lost a duel against a (guildmate) winner: a = winner, b = zone, c = winner class,
         -- d = number of the French sentence
@@ -862,6 +867,7 @@ local function OnRosterUpdate()
     end
     rosterReady = true
     RefreshWindow()
+    if ns.RefreshMapPins then ns.RefreshMapPins() end
 end
 
 -------------------------------------------------------------------------------
@@ -1000,7 +1006,7 @@ end
 
 local function CreateOptions()
     options = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent, "BasicFrameTemplateWithInset")
-    options:SetSize(360, 350)
+    options:SetSize(360, 410)
     options:SetPoint("CENTER")
     options:SetMovable(true)
     options:EnableMouse(true)
@@ -1017,6 +1023,7 @@ local function CreateOptions()
     local function Bound(key, x, y)
         local cb = CheckBox(options, x, y, function(self)
             db[key] = Checked(self)
+            if key == "shareLocation" and ns.OnShareChanged then ns.OnShareChanged() end
             RefreshOptions()
         end)
         cb.key = key
@@ -1063,11 +1070,15 @@ local function CreateOptions()
     end)
     options.volume = slider
 
+    -- Map
+    options.mapHeading = Heading(options, -200)
+    options.shareLocation = Bound("shareLocation", 20, -218)
+
     -- Language
-    options.languageHeading = Heading(options, -200)
+    options.languageHeading = Heading(options, -260)
     options.languages = {}
     for i, lang in ipairs({ "auto", "fr", "en" }) do
-        local cb = CheckBox(options, 20, -218 - (i - 1) * 24, function()
+        local cb = CheckBox(options, 20, -278 - (i - 1) * 24, function()
             SetLanguage(lang)
         end)
         cb.lang = lang
@@ -1098,8 +1109,10 @@ RefreshOptions = function()
     options.title:SetText(L("options_title"))
     options.bannersHeading:SetText(L("sect_banners"))
     options.soundHeading:SetText(L("sect_sound"))
+    options.mapHeading:SetText(L("sect_map"))
     options.languageHeading:SetText(L("sect_language"))
-    local labels = { popups = "opt_popups", selfBanner = "opt_self", sound = "opt_sound" }
+    local labels = { popups = "opt_popups", selfBanner = "opt_self", sound = "opt_sound",
+        shareLocation = "opt_share_location" }
     for _, cb in ipairs(options.checks) do
         cb.label:SetText(L(labels[cb.key]))
         cb:SetChecked(db[cb.key] and true or false)
@@ -1213,6 +1226,9 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         Toggle("popups", "opt_popups")
     elseif msg == "self" then
         Toggle("selfBanner", "opt_self")
+    elseif msg == "map" or msg == "carte" then
+        Toggle("shareLocation", "opt_share_location")
+        if ns.OnShareChanged then ns.OnShareChanged() end
     elseif msg == "sound" then
         Toggle("sound", "opt_sound")
     elseif msg == "lang" or msg == "langue" or msg:match("^langu?e?%s") then
@@ -1263,3 +1279,10 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         for _, line in ipairs(L("help")) do DEFAULT_CHAT_FRAME:AddMessage("  " .. line) end
     end
 end
+
+-- For GuildMap.lua (loaded after this file)
+ns.Send = Send
+ns.GetDB = function() return db end
+ns.L = L
+ns.ClassColored = ClassColored
+ns.ClassName = ClassName

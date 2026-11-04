@@ -20,6 +20,10 @@
   all banners or only your own, sound on/off and its volume (also `/wos volume`), language,
   and a button to test the banners. The slash commands still work
 - Turning the banners off also silences their sounds: never a sound without its banner
+- Guild map: guildmates with the addon on the world map (class color, tooltip with level,
+  zone and age of the position), other continents included. Own position sent every 15 s
+  when moving (every 2 min otherwise), only inside the guild; in a dungeon the last spot
+  stays, faded. "Show me on the map" in the options or `/wos map` to hide yourself
 - Banner font: Lilita One (SIL Open Font License 1.1), replaces UnifrakturMaguntia
 
 ## v0.1.0 (2026-11-03)

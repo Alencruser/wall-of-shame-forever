@@ -9,3 +9,4 @@
 Locales.lua
 DeathStrip.lua
 WallOfShameForever.lua
+GuildMap.lua
