@@ -77,6 +77,23 @@ class StripTest(unittest.TestCase):
         self.assertEqual(decoded, payload)
         self.assertLessEqual(height, strip.MAX_HEIGHT)
 
+    def test_macos_display_p3_colours(self):
+        """A Mac screen shows the strip in its Display P3 profile: pure colours bleed into each
+        other (seen on a 14-inch MacBook Pro: sRGB magenta 255,0,255 captured as 234,51,247).
+        The raw decoder rejects it, the P3 -> sRGB conversion brings it back."""
+        payload = "2|W|Moi-Forever:W1793832149.1|Moi|Forever||12|WARRIOR|1793832149|Moi#1234|Pote|Dun Morogh"
+        img = render(to_py(self.encode(payload)), size=(260, 120))
+        # sRGB -> Display P3, what macOS does on screen (inverse of strip.P3_TO_SRGB)
+        srgb_to_p3 = (0.8225, 0.1774, 0.0, 0.0, 0.0332, 0.9669, 0.0, 0.0, 0.0171, 0.0724, 0.9108, 0.0)
+        lin = [round(strip._to_linear(i) * 255) for i in range(256)] * 3
+        gam = [round(strip._to_srgb(i / 255) * 255) for i in range(256)] * 3
+        on_mac = img.point(lin).convert("RGB", srgb_to_p3).point(gam)
+        magenta = on_mac.getpixel((4 * 4 + 2, 2))  # 5th block: first magic block, (3, 0, 3)
+        self.assertGreater(magenta[1], 30)  # green leaked into the magenta, as on the real Mac
+        self.assertIsNone(strip.decode(on_mac))
+        decoded, _ = strip.decode(strip.from_display_p3(on_mac))
+        self.assertEqual(decoded, payload)
+
     def test_macos_offset_and_retina(self):
         payload = "2|D|Thrall-Forever:1|Thrall|Forever||12|SHAMAN|Durotar|Boar|4|1|"
         blocks = to_py(self.encode(payload))

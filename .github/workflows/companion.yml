@@ -1,5 +1,5 @@
 # Builds the companion on GitHub's machines (PyInstaller only builds for the system it runs on):
-# Windows .exe and macOS .dmg (Apple Silicon). Run it from the Actions tab (Run workflow: files
+# Windows .exe and macOS .dmg (Apple Silicon, and Intel on an Intel runner). Run it from the Actions tab (Run workflow: files
 # zipped by GitHub, for tests), or push a tag companion-v0.2.0 to publish the .exe and the .dmg
 # as they are in a GitHub Release (the downloads for players).
 # Public builds only: never put the guild's connection code here (build_private.py stays local).
@@ -18,6 +18,8 @@ jobs:
         include:
           - { name: windows, os: windows-latest, arch: x64, file: "companion/dist/WallOfShameCompanion.exe" }
           - { name: mac, os: macos-14, arch: arm64, file: "companion/dist/WallOfShameCompanion.dmg" }
+          # Intel Macs: a real Intel machine (an Apple Silicon one builds an Apple Silicon app)
+          - { name: mac-intel, os: macos-15-intel, arch: x64, file: "companion/dist/WallOfShameCompanion-Intel.dmg" }
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     defaults:
@@ -60,5 +62,6 @@ jobs:
             Companion program for the Wall of Shame Forever addon (optional, for Discord).
             - Windows: WallOfShameCompanion.exe
             - macOS Apple Silicon (M1 and later): WallOfShameCompanion.dmg (open it, then open the app)
+            - macOS Intel: WallOfShameCompanion-Intel.dmg
             Not signed: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks
             to confirm in System Settings > Privacy & Security (Open Anyway). See companion/README.md.

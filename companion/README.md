@@ -155,7 +155,8 @@ From source, `python app.py` runs the tray app without installing anything, and
 ## macOS
 
 Same companion, strip and screenshots included: `WallOfShameCompanion.app`, an icon in the menu
-bar (no Dock icon). Shared as `WallOfShameCompanion.dmg`, for Apple Silicon Macs (M1 and later).
+bar (no Dock icon). Shared as `WallOfShameCompanion.dmg` for Apple Silicon Macs (M1 and later)
+and `WallOfShameCompanion-Intel.dmg` for Intel Macs.
 
 - **First launch**: open the `.dmg` (double click), then the app inside. It is not signed with an Apple certificate: macOS says
   it cannot check it. Open **System Settings > Privacy & Security**, click **Open Anyway** next to

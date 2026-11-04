@@ -220,7 +220,10 @@ def read_strip(sct, area):
     corner = grab(sct, dict(area, width=width, height=height))
     per_unit = corner.width / width  # capture pixels per point
     block = strip.BLOCK * per_unit / scale
-    found = strip.locate(corner, block, int(MAC_MARGIN_X * per_unit), int(MAC_MARGIN_Y * per_unit))
+    max_dx, max_dy = int(MAC_MARGIN_X * per_unit), int(MAC_MARGIN_Y * per_unit)
+    # as captured, else back from the screen's colour profile (Display P3) to the game's colours
+    found = strip.locate(corner, block, max_dx, max_dy) \
+        or strip.locate(strip.from_display_p3(corner), block, max_dx, max_dy)
     return found and (*found, per_unit)
 
 

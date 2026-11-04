@@ -82,6 +82,35 @@ def decode(img, ox=0, oy=0, block_size=BLOCK):
     return payload.decode("utf-8", errors="replace"), int(oy + -(-blocks // COLS) * block_size + 0.999)
 
 
+# macOS shows the game's sRGB colours in the screen's colour profile (Display P3 on Macs since
+# 2016): greys stay, pure colours bleed into each other (sRGB red 255,0,0 is 234,51,35 in P3), so
+# the levels of the strip no longer match the calibration greys. from_display_p3 turns a capture
+# back into sRGB: sRGB curve to linear, P3 -> sRGB matrix (D65), back to the sRGB curve.
+P3_TO_SRGB = (1.2249, -0.2247, 0.0, 0.0,
+              -0.0420, 1.0419, 0.0, 0.0,
+              -0.0197, -0.0786, 1.0979, 0.0)
+
+
+def _to_linear(v):
+    v /= 255
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+
+def _to_srgb(v):
+    v = min(1.0, max(0.0, v))
+    return v * 12.92 if v <= 0.0031308 else 1.055 * v ** (1 / 2.4) - 0.055
+
+
+_LINEAR = [round(_to_linear(i) * 255) for i in range(256)] * 3
+_GAMMA = [round(_to_srgb(i / 255) * 255) for i in range(256)] * 3
+
+
+def from_display_p3(img):
+    """RGB PIL image captured on a Display P3 screen -> the game's sRGB colours (approximate:
+    8-bit linear steps, plenty for the 4 levels of the strip)."""
+    return img.point(_LINEAR).convert("RGB", P3_TO_SRGB).point(_GAMMA)
+
+
 def locate(img, block_size, max_dx, max_dy):
     """Look for the strip near the top-left corner of img: on macOS the capture starts at the window
     frame (title bar included), not at the game's first pixel. Same result as decode."""

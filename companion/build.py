@@ -2,12 +2,14 @@
 
 - Windows: dist/WallOfShameCompanion.exe, one file, no console
 - macOS: dist/WallOfShameCompanion.app (menu bar app, no Dock icon) and
-  dist/WallOfShameCompanion.dmg to share it (Apple Silicon when built on an Apple Silicon Mac)
+  dist/WallOfShameCompanion.dmg to share it (Apple Silicon), or WallOfShameCompanion-Intel.dmg
+  when built on an Intel Mac
 
 .venv\\Scripts\\python build.py [output folder, default dist]      (macOS: .venv/bin/python)
 """
 
 import os
+import platform
 import plistlib
 import shutil
 import subprocess
@@ -68,7 +70,8 @@ with open(info, "wb") as f:
 subprocess.run(["codesign", "--force", "--deep", "--sign", "-", bundle], check=True)
 # A .app is a folder: it is shared as a disk image (.dmg), opened with a double click. It only
 # holds the app, which copies itself to ~/Applications on first launch (platform_mac.install).
-dmg = os.path.join(DIST, f"{APP}.dmg")
+# Apple Silicon: WallOfShameCompanion.dmg; Intel Mac: WallOfShameCompanion-Intel.dmg
+dmg = os.path.join(DIST, APP + ("-Intel" if platform.machine() == "x86_64" else "") + ".dmg")
 stage = os.path.join(WORK, "dmg")
 shutil.rmtree(stage, ignore_errors=True)
 os.makedirs(stage)
