@@ -1,6 +1,6 @@
 # Wall of Shame Forever
 
-## Unreleased
+## v0.2.0 (2026-11-04)
 
 - New banners for level-ups, deaths and duels; one level-up banner for every class
 - Duel lost against a guildmate: the loser reports it, the whole guild gets a banner
@@ -24,6 +24,16 @@
   zone and age of the position), other continents included. Own position sent every 15 s
   when moving (every 2 min otherwise), only inside the guild; in a dungeon the last spot
   stays, faded. "Show me on the map" in the options or `/wos map` to hide yourself
+- Without a guild: everyone with the same code sees every announcement. The game refuses addon
+  messages on custom channels and lets an addon write on a channel only during a player action,
+  so the messages go as hidden chat lines on the code channel, sent at the next key press
+  (position every 30 s instead of 15). The channel name no longer depends on how the client
+  formats hexadecimal numbers
+- `/wos debug`: guild, code, code channel, players seen and the last messages received
+- Duel banner: text lowered below the broken swords; a title on two lines goes down to size 14
+  so the zone line still fits
+- Guild map: pins drawn with the addon's own image (disc in the class colour, black ring), the
+  client's party icon being missing on some clients
 - Banner font: Lilita One (SIL Open Font License 1.1), replaces UnifrakturMaguntia
 
 ## v0.1.0 (2026-11-03)

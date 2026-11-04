@@ -1,19 +1,22 @@
 -- Wall of Shame Forever: guildmates on the world map.
 -- The game only gives a player their own position: each addon sends its own every 15 seconds
--- (when it moved, else every 2 minutes) on the guild channel, the others put a pin on the map.
+-- (when it moved, else every 2 minutes) on the guild channel, or every 30 seconds on the code
+-- channel without a guild; the others put a pin on the map.
 --   P|mapID|x|y|zone        position on the uiMap mapID (x, y from 0 to 1)
 --   P||||instance name|1    in a dungeon, raid or battleground: no coordinates, the last ones stay
 --   P|hide                  stopped sharing (option off)
 -- Loaded after WallOfShameForever.lua, which gives ns.Send, ns.GetDB, ns.L, ns.ClassColored,
 -- ns.ClassName and calls ns.OnPosition, ns.SendPosition, ns.OnShareChanged.
 
-local _, ns = ...
+local ADDON_NAME, ns = ...
+local PIN_TEXTURE = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\pin" -- white disc in a black ring
 
 local SEND_EVERY = 15  -- seconds between two checks of the own position
+local SOLO_EVERY = 30  -- without a guild (code channel, through the chat): at most this often
 local KEEPALIVE = 120  -- sent at least this often, even without moving
 local EXPIRE = 300     -- a pin without news for this long disappears
 local MOVE_MIN = 0.002 -- smaller moves (map units) are not sent
-local PIN_SIZE = 14
+local PIN_SIZE = 16
 
 local positions = {} -- [name] = { map, x, y, zone, instance, time }
 local lastSent = {}
@@ -48,6 +51,8 @@ function ns.SendPosition(force)
     local p = MyPosition()
     if not p then return end
     local now = GetTime()
+    -- without a guild the code channel goes through the chat (anti-spam): every 30 s at most
+    if not force and not IsInGuild() and lastSent.time and now - lastSent.time < SOLO_EVERY then return end
     if not force and lastSent.time and now - lastSent.time < KEEPALIVE then
         if p.instance and lastSent.instance and p.zone == lastSent.zone then return end
         if not p.instance and not lastSent.instance and p.map == lastSent.map
@@ -122,14 +127,11 @@ end
 local function CreatePin(canvas)
     local pin = CreateFrame("Frame", nil, canvas)
     pin:SetSize(PIN_SIZE, PIN_SIZE)
-    pin.border = pin:CreateTexture(nil, "ARTWORK")
-    pin.border:SetPoint("CENTER")
-    pin.border:SetSize(PIN_SIZE + 4, PIN_SIZE + 4)
-    pin.border:SetTexture("Interface\\WorldMap\\WorldMapPartyIcon")
-    pin.border:SetVertexColor(0, 0, 0)
+    -- our own image (the client's party icon is missing on some clients): the class colour
+    -- tints the white disc, the black ring stays black
     pin.dot = pin:CreateTexture(nil, "OVERLAY")
     pin.dot:SetAllPoints()
-    pin.dot:SetTexture("Interface\\WorldMap\\WorldMapPartyIcon")
+    pin.dot:SetTexture(PIN_TEXTURE)
     pin:EnableMouse(true)
     pin:SetScript("OnEnter", PinTooltip)
     pin:SetScript("OnLeave", function() GameTooltip:Hide() end)

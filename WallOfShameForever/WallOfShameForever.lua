@@ -139,9 +139,12 @@ local MEDIA = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\"
 local TITLE_FONT = MEDIA .. "LilitaOne.ttf"
 -- Text centered in the dark panel: distance from the top of the 440x220 banner
 local LAYOUT = {
-    level = { title = 96, sub = 126 },
-    death = { title = 84, sub = 114 },
-    duel = { title = 96, sub = 126, inset = 72 }, -- narrower: faces on both sides
+    -- title2/sub2/size2: when the title goes on two lines (no sub2: no subtitle then)
+    level = { title = 96, sub = 126, title2 = 88, sub2 = 134 },
+    death = { title = 84, sub = 114, title2 = 76, sub2 = 122 },
+    -- duel: between the broken swords (down to y 100) and the bottom of the frame (y 150),
+    -- narrower (faces on both sides); on two lines, size 14 keeps the zone line in the room
+    duel = { title = 103, sub = 133, title2 = 101, sub2 = 136, size2 = 14, inset = 72 },
 }
 local TEXT_INSET = 60 -- left and right, keeps the text inside the panel (LAYOUT inset overrides)
 local TITLE_SIZE = 26
@@ -179,8 +182,7 @@ local function CreateBanner()
 end
 
 local MIN_ONE_LINE = 20   -- below this size, a title with a line break goes on two lines
-local TWO_LINE_SIZE = 19  -- largest size on two lines
-local TWO_LINE_SHIFT = 8  -- two lines: title starts higher, subtitle lower
+local TWO_LINE_SIZE = 19  -- largest size on two lines (LAYOUT size2 overrides)
 
 local function MeasureTitle(b, text, size)
     b.title:SetFont(b.titleFont, size, "OUTLINE")
@@ -203,7 +205,7 @@ local function SetTitle(b, kind, text)
         if size < MIN_ONE_LINE and text:find("\n") then
             local widest = 0
             for line in text:gmatch("[^\n]+") do widest = math.max(widest, MeasureTitle(b, line, TITLE_SIZE)) end
-            size = math.min(TWO_LINE_SIZE, math.floor(TITLE_SIZE * room / widest))
+            size = math.min(pos.size2 or TWO_LINE_SIZE, math.floor(TITLE_SIZE * room / widest))
             lines, shown = 2, text
         end
     end
@@ -211,13 +213,19 @@ local function SetTitle(b, kind, text)
     b.title:SetWordWrap(lines == 2)
     b.title:SetText(shown)
 
-    local shift = lines == 2 and TWO_LINE_SHIFT or 0
+    local titleY, subY = pos.title, pos.sub
+    if lines == 2 then titleY, subY = pos.title2, pos.sub2 end
     b.title:ClearAllPoints()
-    b.title:SetPoint("TOPLEFT", inset, -(pos.title - shift))
-    b.title:SetPoint("TOPRIGHT", -inset, -(pos.title - shift))
+    b.title:SetPoint("TOPLEFT", inset, -titleY)
+    b.title:SetPoint("TOPRIGHT", -inset, -titleY)
     b.sub:ClearAllPoints()
-    b.sub:SetPoint("TOPLEFT", inset, -(pos.sub + shift))
-    b.sub:SetPoint("TOPRIGHT", -inset, -(pos.sub + shift))
+    if subY then
+        b.sub:SetPoint("TOPLEFT", inset, -subY)
+        b.sub:SetPoint("TOPRIGHT", -inset, -subY)
+        b.sub:Show()
+    else
+        b.sub:Hide()
+    end
 end
 
 -- PlaySoundFile has no volume: each sound exists at 5 volumes
@@ -311,11 +319,22 @@ end
 -------------------------------------------------------------------------------
 
 local channelName
+local recentMessages = {} -- last addon messages received, for /wos debug
 
+-- 8 hex digits, written by hand: string.format("%x") on numbers above 2^31 depends on the
+-- client's Lua build (error, or another value on another system), and every player with the
+-- same code must get the very same channel name
+local HEX = "0123456789abcdef"
 local function Hash(s, seed)
     local h = seed
     for i = 1, #s do h = (h * 31 + s:byte(i)) % 4294967296 end
-    return string.format("%08x", h)
+    local out = ""
+    for _ = 1, 8 do
+        local digit = h % 16
+        out = HEX:sub(digit + 1, digit + 1) .. out
+        h = (h - digit) / 16
+    end
+    return out
 end
 
 local function UpdateChannel()
@@ -354,13 +373,65 @@ local function CheckGuildLeft()
     end)
 end
 
+-- Without a guild, the code channel. The client refuses addon messages on a custom channel
+-- and lets an addon write on a channel only during a player action (key or mouse press):
+-- the messages become chat lines "WOS:..." ("|" written "~"), queued and sent one by one at the
+-- next presses, then hidden from the chat on every side (chat filter, below).
+local CHAT_TAG = "WOS:"
+local CHAT_GAP = 1 -- seconds between two lines, against the chat's anti-spam
+local chatQueue, lastChatSend, chatSent = {}, 0, 0
+
+local function QueueChat(msg)
+    if msg:sub(1, 2) == "P|" then -- only the newest position (or "hide") is worth sending
+        for i = #chatQueue, 1, -1 do
+            if chatQueue[i]:sub(1, #CHAT_TAG + 2) == CHAT_TAG .. "P~" then table.remove(chatQueue, i) end
+        end
+    end
+    chatQueue[#chatQueue + 1] = CHAT_TAG .. (msg:gsub("|", "~"))
+    while #chatQueue > 20 do table.remove(chatQueue, 1) end
+end
+
+-- From a key or mouse press only (the game requires it for channels)
+local function FlushChat()
+    if #chatQueue == 0 or not channelName or IsInGuild() then return end
+    local now = GetTime()
+    if now - lastChatSend < CHAT_GAP then return end
+    local id = GetChannelName(channelName)
+    if not id or id == 0 then return end
+    lastChatSend, chatSent = now, chatSent + 1
+    SendChatMessage(table.remove(chatQueue, 1), "CHANNEL", nil, id)
+end
+
+-- A keyboard frame that lets every key through (propagation) and flushes the queue on the way,
+-- plus mouse clicks in the world. Set up out of combat only: without propagation, a keyboard
+-- frame would swallow the keys.
+local keyHook
+local function SetupKeyHook()
+    if keyHook or (InCombatLockdown and InCombatLockdown()) then return end
+    local f = CreateFrame("Frame", nil, UIParent)
+    if not (f.SetPropagateKeyboardInput and pcall(f.SetPropagateKeyboardInput, f, true)) then return end
+    f:EnableKeyboard(true)
+    f:SetScript("OnKeyDown", FlushChat)
+    keyHook = f
+    if WorldFrame and WorldFrame.HookScript then WorldFrame:HookScript("OnMouseDown", FlushChat) end
+end
+
+-- Hide our lines and the channel's join notices from every chat window
+if ChatFrame_AddMessageEventFilter then
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL", function(_, _, text)
+        return type(text) == "string" and text:sub(1, #CHAT_TAG) == CHAT_TAG
+    end)
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_CHANNEL_NOTICE", function(_, _, _, _, _, channelString, _, _, _, _, baseName)
+        local name = tostring(baseName or "") .. " " .. tostring(channelString or "")
+        return name:find("WOS%x%x%x%x%x%x%x%x") ~= nil
+    end)
+end
+
 local function Send(msg)
-    if not (C_ChatInfo and C_ChatInfo.SendAddonMessage) then return end
     if IsInGuild() then
-        C_ChatInfo.SendAddonMessage(PREFIX, msg, "GUILD")
+        if C_ChatInfo and C_ChatInfo.SendAddonMessage then C_ChatInfo.SendAddonMessage(PREFIX, msg, "GUILD") end
     elseif channelName then
-        local id = GetChannelName(channelName)
-        if id and id > 0 then C_ChatInfo.SendAddonMessage(PREFIX, msg, "CHANNEL", id) end
+        QueueChat(msg)
     end
 end
 
@@ -883,6 +954,7 @@ frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
+frame:RegisterEvent("CHAT_MSG_CHANNEL")
 if CombatLogGetCurrentEventInfo then
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     frame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -922,6 +994,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         end)
         Print(L("loaded"))
         pcall(RegisterGameOptions)
+        SetupKeyHook()
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
@@ -933,11 +1006,28 @@ frame:SetScript("OnEvent", function(_, event, ...)
         OnSystemMessage((...))
     elseif event == "PLAYER_REGEN_ENABLED" then
         wipe(levelCache)
+        SetupKeyHook() -- if the login happened in combat
+    elseif event == "CHAT_MSG_CHANNEL" then
+        -- without a guild: "WOS:..." lines on the code channel (see QueueChat)
+        local text, sender, _, channelString, _, _, _, _, baseName = ...
+        if not (channelName and not IsInGuild() and type(text) == "string"
+            and text:sub(1, #CHAT_TAG) == CHAT_TAG) then return end
+        local from = tostring(baseName or "") .. " " .. tostring(channelString or "")
+        if not from:lower():find(channelName:lower(), 1, true) then return end
+        local msg = text:sub(#CHAT_TAG + 1):gsub("~", "|")
+        table.insert(recentMessages, 1, { time = time(), sender = sender, channel = "CODE",
+            from = channelString, kind = msg:sub(1, 1), kept = true })
+        recentMessages[9] = nil
+        OnAddonMessage(msg, sender)
     elseif event == "CHAT_MSG_ADDON" then
         local prefix, text, channel, sender, _, _, _, fromChannel = ...
         if prefix ~= PREFIX then return end
         local ours = channel == "GUILD" or (channel == "CHANNEL" and channelName and not IsInGuild()
             and (not fromChannel or fromChannel:lower():find(channelName:lower(), 1, true)))
+        -- for /wos debug: the last messages received, kept or not
+        table.insert(recentMessages, 1, { time = time(), sender = sender, channel = channel,
+            from = fromChannel, kind = (text or ""):sub(1, 1), kept = ours and true or false })
+        recentMessages[9] = nil
         if ours then OnAddonMessage(text, sender) end
     elseif event == "GUILD_ROSTER_UPDATE" then
         OnRosterUpdate()
@@ -1173,6 +1263,42 @@ SLASH_WALLOFSHAMEFOREVER2 = "/wallofshame"
 local GUILD_INFO_MAX = 500
 
 -- Officers: put the bot's code in the guild information, where every member's addon reads it
+-- /wos debug: where does the sharing get stuck (guild, code, channel, messages received)
+local function Debug()
+    local function yes(v) return v and "|cff00ff00yes|r" or "|cffff3333no|r" end
+    local function line(text) DEFAULT_CHAT_FRAME:AddMessage("  " .. text) end
+    Print("debug")
+    local metadata = (type(C_AddOns) == "table" and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    line("version " .. tostring(metadata and metadata(ADDON_NAME, "Version") or "?")
+        .. ", client " .. tostring((select(4, GetBuildInfo()))) .. " " .. tostring(GetLocale and GetLocale()))
+    line("in a guild: " .. yes(IsInGuild()) .. " " .. tostring(GetGuildInfo("player") or "")
+        .. (db.guildName and (" (remembered: " .. db.guildName .. ")") or ""))
+    line("code: " .. tostring(db.connection or "none"))
+    local id = channelName and GetChannelName(channelName) or 0
+    line("code channel: " .. tostring(channelName or "none (in a guild or no code)")
+        .. (channelName and (", joined: " .. yes(id and id > 0) .. " (#" .. tostring(id) .. ")") or ""))
+    local registered = C_ChatInfo and C_ChatInfo.IsAddonMessagePrefixRegistered
+        and C_ChatInfo.IsAddonMessagePrefixRegistered(PREFIX)
+    line("addon messages registered: " .. yes(registered))
+    if not IsInGuild() and channelName then
+        line("sending on the code channel: at the next key press, waiting: " .. #chatQueue
+            .. ", sent: " .. chatSent .. ", key hook: " .. yes(keyHook))
+    end
+    line("map: " .. yes(C_Map and C_Map.GetMapRectOnMap) .. ", sharing my position: " .. yes(db.shareLocation))
+    local seen = {}
+    for name, m in pairs(db.members) do
+        if m.hasAddon and name ~= ShortName(playerName) then
+            seen[#seen + 1] = name .. (m.lastSeen and (" " .. (time() - m.lastSeen) .. "s") or "")
+        end
+    end
+    line("players seen with the addon: " .. (#seen > 0 and table.concat(seen, ", ") or "|cffff3333none|r"))
+    if #recentMessages == 0 then line("messages received: |cffff3333none|r") end
+    for _, r in ipairs(recentMessages) do
+        line(string.format("%ds ago, %s from %s%s: %s", time() - r.time, tostring(r.channel), tostring(r.sender),
+            r.from and r.from ~= "" and (" (" .. r.from .. ")") or "", r.kept and ("kept, " .. r.kind) or "|cffff3333ignored|r"))
+    end
+end
+
 local function SetConnection(code)
     if not code:match("^" .. CODE_PATTERN .. "$") then
         Print(L("code_invalid"))
@@ -1262,6 +1388,8 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         if not db.connection then
             Print(L("discord_not_set"))
         end
+    elseif msg == "debug" then
+        Debug()
     elseif msg == "flush" then
         ReloadUI() -- WoW only writes SavedVariables on reload or logout
     elseif msg == "striptest" or msg == "striptest level" or msg == "striptest duel" then
