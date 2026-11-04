@@ -155,13 +155,13 @@ From source, `python app.py` runs the tray app without installing anything, and
 ## macOS
 
 Same companion, strip and screenshots included: `WallOfShameCompanion.app`, an icon in the menu
-bar (no Dock icon). Builds for Apple Silicon (`-mac-arm64.zip`) and Intel Macs (`-mac-x86_64.zip`).
+bar (no Dock icon). Shared as `WallOfShameCompanion.dmg`, for Apple Silicon Macs (M1 and later).
 
-- **First launch**: unzip, open the app. It is not signed with an Apple certificate: macOS says
+- **First launch**: open the `.dmg` (double click), then the app inside. It is not signed with an Apple certificate: macOS says
   it cannot check it. Open **System Settings > Privacy & Security**, click **Open Anyway** next to
   the message (older macOS: right-click the app > **Open**). The app then copies itself to
   `~/Applications`, opens at login (`~/Library/LaunchAgents/com.wallofshame.companion.plist`) and
-  starts in the menu bar. The downloaded copy can be deleted.
+  starts in the menu bar. The `.dmg` can then be ejected and deleted.
 - **Screen Recording permission**: macOS asks for it on first launch. Allow the companion in
   **System Settings > Privacy & Security > Screen Recording**, then quit it from its menu and
   reopen it (`~/Applications/WallOfShameCompanion.app`). Without it, events still go to Discord on
@@ -173,8 +173,9 @@ bar (no Dock icon). Builds for Apple Silicon (`-mac-arm64.zip`) and Intel Macs (
   window's corner (title bar included) and Retina screens are handled (2 pixels per point).
 
 The `.app` can only be built on a Mac: the GitHub Actions workflow `companion` builds it (and the
-Windows `.exe`) on GitHub's machines. Actions tab > **companion** > **Run workflow**, then download
-the files from the run; or push a tag `companion-v0.1.0` to publish them in a GitHub Release. On a
+Windows `.exe`) on GitHub's machines. For players, push a tag `companion-v0.2.0`: the `.exe` and
+the `.dmg` are published as they are in a GitHub Release. Actions tab > **companion** > **Run
+workflow** is for tests: GitHub zips the files of a run (unzip twice on a Mac). On a
 Mac: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 && .venv/bin/python build.py`.
 

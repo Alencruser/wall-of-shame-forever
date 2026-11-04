@@ -2,16 +2,17 @@
 
 - Windows: dist/WallOfShameCompanion.exe, one file, no console
 - macOS: dist/WallOfShameCompanion.app (menu bar app, no Dock icon) and
-  dist/WallOfShameCompanion-mac-<arm64|x86_64>.zip to share it
+  dist/WallOfShameCompanion.dmg to share it (Apple Silicon when built on an Apple Silicon Mac)
 
 .venv\\Scripts\\python build.py [output folder, default dist]      (macOS: .venv/bin/python)
 """
 
 import os
-import platform
 import plistlib
+import shutil
 import subprocess
 import sys
+import time
 
 from appinfo import APP, BUNDLE_ID, VERSION
 
@@ -65,9 +66,22 @@ with open(info, "wb") as f:
     plistlib.dump(plist, f)
 # Info.plist changed: sign again (ad hoc, no Apple certificate), else Apple Silicon calls it damaged
 subprocess.run(["codesign", "--force", "--deep", "--sign", "-", bundle], check=True)
-archive = os.path.join(DIST, f"{APP}-mac-{platform.machine()}.zip")
-if os.path.exists(archive):
-    os.remove(archive)
-subprocess.run(["ditto", "-c", "-k", "--keepParent", bundle, archive], check=True)  # keeps the bundle intact
+# A .app is a folder: it is shared as a disk image (.dmg), opened with a double click. It only
+# holds the app, which copies itself to ~/Applications on first launch (platform_mac.install).
+dmg = os.path.join(DIST, f"{APP}.dmg")
+stage = os.path.join(WORK, "dmg")
+shutil.rmtree(stage, ignore_errors=True)
+os.makedirs(stage)
+shutil.copytree(bundle, os.path.join(stage, APP + ".app"), symlinks=True)  # symlinks: keeps the bundle intact
+if os.path.exists(dmg):
+    os.remove(dmg)
+for attempt in range(3):  # hdiutil sometimes fails with "Resource busy" on build machines
+    result = subprocess.run(["hdiutil", "create", "-volname", "Wall of Shame Forever", "-srcfolder", stage,
+                             "-ov", "-format", "UDZO", dmg])
+    if result.returncode == 0:
+        break
+    time.sleep(5)
+else:
+    sys.exit("hdiutil could not create the .dmg")
 print(bundle)
-print(archive)
+print(dmg)
