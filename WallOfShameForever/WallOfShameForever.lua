@@ -501,11 +501,44 @@ local function OnCombatLog()
     end
 end
 
+-- WoW Forever: addons may not listen to the combat log, but the death recap (the game's
+-- "Death Recap" window) lists the last hits taken, with the attacker's name and GUID.
+-- Returns the last hit as { name, guid, sig } (sig: tells this death from the previous one).
+local function RecapHit()
+    if not (C_DeathRecap and C_DeathRecap.GetRecapEvents) then return nil end
+    local ok, events = pcall(C_DeathRecap.GetRecapEvents)
+    if not ok or type(events) ~= "table" or #events == 0 then return nil end
+    local last = events[1]
+    for _, e in ipairs(events) do
+        if (tonumber(e.timestamp) or 0) > (tonumber(last.timestamp) or 0) then last = e end
+    end
+    local name, guid = last.sourceName, last.sourceGUID
+    local env = last.environmentalType
+    if env and env ~= "" then
+        env = tostring(env):lower():gsub("^%l", string.upper) -- FALLING -> Falling
+        name, guid = ns.LOCALES.en["env_" .. env] and env or "Environment", nil
+    end
+    if not name or name == "" then return nil end
+    return { name = name, guid = guid,
+        sig = table.concat({ #events, tostring(last.timestamp), tostring(last.sourceGUID), tostring(last.amount) }, ":") }
+end
+
+-- The recap of this death, not the previous one (it stays readable until the next death)
+local function FreshRecapHit()
+    local hit = RecapHit()
+    if hit and hit.sig ~= (db and db.lastRecap) then return hit end
+end
+
 -- killer name and level ("" when unknown)
 local function Killer()
-    if not lastHit or GetTime() - lastHit.time > KILLER_MEMORY then return "", "" end
-    local level = FindUnitLevel(lastHit.guid)
-    return lastHit.name or "", level and tostring(level) or ""
+    local hit = lastHit
+    if not hit or GetTime() - hit.time > KILLER_MEMORY then
+        hit = FreshRecapHit()
+        if hit and db then db.lastRecap = hit.sig end
+    end
+    if not hit then return "", "" end
+    local level = FindUnitLevel(hit.guid)
+    return hit.name or "", level and tostring(level) or ""
 end
 
 local function KillerText(killer, killerLevel)
@@ -1027,8 +1060,18 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
-        -- short delay so the killing blow is already in the combat log
-        C_Timer.After(0.5, OnOwnDeath)
+        -- short delay so the killing blow is already in the combat log; without the combat log
+        -- (WoW Forever), wait up to 3 seconds for the death recap of this death
+        local tries = 0
+        local function Wait()
+            tries = tries + 1
+            if lastHit or tries >= 6 or not (C_DeathRecap and C_DeathRecap.GetRecapEvents) or FreshRecapHit() then
+                OnOwnDeath()
+            else
+                C_Timer.After(0.5, Wait)
+            end
+        end
+        C_Timer.After(0.5, Wait)
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         OnCombatLog()
     elseif event == "CHAT_MSG_SYSTEM" then

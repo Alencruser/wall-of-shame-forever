@@ -1,5 +1,12 @@
 # Wall of Shame Forever
 
+## v0.3.1 (2026-11-05)
+
+- WoW Forever: the killer is back on death banners and on Discord. Blizzard closes the combat
+  log to addons on this client, so the addon now reads the game's death recap instead (the mob
+  or player who landed the last hit, or a fall, drowning, lava...)
+- Killing blows on enemy players cannot be counted on WoW Forever (combat log closed)
+
 ## v0.3.0 (2026-11-05)
 
 - Position of the companion's strip: top left (default), top center, top right, middle left,
