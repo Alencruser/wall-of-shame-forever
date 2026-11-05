@@ -3,7 +3,7 @@
 ## Notes: Level-ups, deaths and guild roster for your guild in WoW Forever. Based on Memento Forever by alexauer.
 ## Notes-frFR: Level-ups, morts et liste de la guilde pour WoW Forever. Basé sur Memento Forever par alexauer.
 ## Author: Alencruser
-## Version: v0.4.0
+## Version: v0.4.1
 ## X-Curse-Project-ID: 1781728
 ## SavedVariables: WallOfShameForeverDB
 

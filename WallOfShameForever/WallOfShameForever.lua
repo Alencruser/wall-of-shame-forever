@@ -858,23 +858,68 @@ OnKillingBlow = function(guid, victim, flags)
 end
 
 -- WoW Forever: addons may not read the combat log, but the game keeps its own statistic
--- "World Killing Blows" (killing blows on enemy players outside battlegrounds). It is read again
--- after each honor event and after each fight; every step up is one of our killing blows.
--- The victim is the dead enemy player in view (target, mouseover, nameplates) when there is one.
+-- "World Killing Blows". On Forever it counts monsters too (775 killing blows, 0 player killed),
+-- so a killing blow on a player is a step up of that statistic together with a step up of the
+-- honorable kills (enemy players killed): a monster moves only the first, a player killed by
+-- someone else in the group only the second. Both are read again after each honor event and after
+-- each fight. The victim is the dead enemy player in view (target, mouseover, nameplates) when
+-- there is one. A player too low to give honor is not counted (no honorable kill).
 local STAT_WORLD_KB = 1488
-local KB_SETTLE = 1.5 -- seconds: the statistic moves a moment after the kill
-local KB_MAX_STEP = 10 -- a bigger jump is the statistic loading late, not kills
-local lastWorldKB, kbCheckPending
+local KB_SETTLE = 1.5 -- seconds: the statistics move a moment after the kill
+local KB_MAX_STEP = 10 -- a bigger jump is a statistic loading late, not kills
+local KB_PAIR_TIME = 4 -- seconds: one counter may move a little after the other
+local KB_DEATH_QUIET = 30 -- seconds after our own death: nothing counted (see CheckWorldKB)
+local lastWorldKB, lastHonorKills, kbCheckPending, kbRetried, lastOwnDeath, honorStatId
+local kbCredit, hkCredit, creditAt = 0, 0, 0
+
+local function Secret(v)
+    return issecretvalue and issecretvalue(v)
+end
+
+local function Count(value)
+    if value == nil or Secret(value) then return nil end
+    return tonumber((tostring(value):gsub("[^%d]", ""))) or 0 -- "--" when never counted
+end
 
 local function WorldKB()
     if not GetStatistic then return nil end
     local ok, value = pcall(GetStatistic, STAT_WORLD_KB)
-    if not ok or value == nil then return nil end
-    return tonumber((tostring(value):gsub("[^%d]", ""))) or 0 -- "--" when never counted
+    return ok and Count(value) or nil
 end
 
-local function Secret(v)
-    return issecretvalue and issecretvalue(v)
+-- The statistic "World Honorable Kills", found by its name (English client) once
+local function HonorStatId()
+    if honorStatId == nil then
+        honorStatId = false
+        pcall(function()
+            for _, cat in ipairs(GetStatisticsCategoryList() or {}) do
+                for i = 1, (GetCategoryNumAchievements(cat) or 0) do
+                    local id, name = GetAchievementInfo(cat, i)
+                    if type(name) == "string" and not Secret(name) and name:lower() == "world honorable kills" then
+                        honorStatId = id
+                        return
+                    end
+                end
+            end
+        end)
+    end
+    return honorStatId
+end
+
+-- Enemy players killed (honorable kills): for life, or for this session, or the statistic
+local function HonorKills()
+    for _, fn in ipairs({ GetPVPLifetimeStats or false, GetPVPSessionStats or false }) do
+        if fn then
+            local ok, value = pcall(fn)
+            local n = ok and type(value) ~= "function" and Count(value)
+            if n then return n end
+        end
+    end
+    local id = HonorStatId()
+    if id then
+        local ok, value = pcall(GetStatistic, id)
+        return ok and Count(value) or nil
+    end
 end
 
 local function DeadEnemyInView()
@@ -891,13 +936,36 @@ local function DeadEnemyInView()
     end
 end
 
+local ScheduleWorldKB
+
+local function Step(now, last)
+    local gained = (now and last) and now - last or 0
+    return (gained > 0 and gained <= KB_MAX_STEP) and gained or 0
+end
+
 local function CheckWorldKB()
     kbCheckPending = nil
-    local now = WorldKB()
-    if not now then return end
-    local gained = lastWorldKB and now - lastWorldKB or 0
-    lastWorldKB = now
-    if gained <= 0 or gained > KB_MAX_STEP then return end
+    local kb, hk = WorldKB(), HonorKills()
+    if not (kb and hk) then return end
+    local kbGained, hkGained = Step(kb, lastWorldKB), Step(hk, lastHonorKills)
+    lastWorldKB, lastHonorKills = kb, hk
+    if GetTime() - creditAt > KB_PAIR_TIME then kbCredit, hkCredit = 0, 0 end
+    if kbGained + hkGained > 0 then
+        kbCredit, hkCredit, creditAt = kbCredit + kbGained, hkCredit + hkGained, GetTime()
+    end
+    local gained = math.min(kbCredit, hkCredit)
+    kbCredit, hkCredit = kbCredit - gained, hkCredit - gained
+    -- a player died: the other counter may still move, read once more
+    if hkCredit > 0 and not kbRetried then
+        kbRetried = true
+        ScheduleWorldKB()
+    else
+        kbRetried = nil
+    end
+    if gained <= 0 then return end
+    -- dead, or just died: whatever moved is not our killing blow
+    local okDead, dead = pcall(UnitIsDeadOrGhost, "player")
+    if (okDead and dead == true) or (lastOwnDeath and GetTime() - lastOwnDeath < KB_DEATH_QUIET) then return end
     local victim, level, class = DeadEnemyInView()
     local payload
     for i = 1, gained do
@@ -911,15 +979,17 @@ local function CheckWorldKB()
     if payload then ns.ShowStrip(payload) end
 end
 
-local function ScheduleWorldKB()
+function ScheduleWorldKB()
     if kbCheckPending then return end
     kbCheckPending = true
     C_Timer.After(KB_SETTLE, CheckWorldKB)
 end
 
--- After each loading screen: the current value is the starting point, nothing counted
+-- After each loading screen: the current values are the starting point, nothing counted
 local function BaselineWorldKB()
     lastWorldKB = WorldKB() or lastWorldKB
+    lastHonorKills = HonorKills() or lastHonorKills
+    kbCredit, hkCredit = 0, 0
 end
 
 local function OnOwnDeath()
@@ -1133,6 +1203,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
+        lastOwnDeath = GetTime()
         -- short delay so the killing blow is already in the combat log; without the combat log
         -- (WoW Forever), wait up to 3 seconds for the death recap of this death
         local tries = 0

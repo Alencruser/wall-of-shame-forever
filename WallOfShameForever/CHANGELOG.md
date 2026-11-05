@@ -1,5 +1,13 @@
 # Wall of Shame Forever
 
+## v0.4.1 (2026-11-06)
+
+- WoW Forever: monsters no longer posted as killing blows. On this client the game's statistic
+  "World Killing Blows" counts monsters too, so a killing blow on a player now needs that
+  statistic and the honorable kills to go up together. A player too low to give honor is not
+  counted
+- Nothing counted as a killing blow while dead, or in the 30 seconds after your own death
+
 ## v0.4.0 (2026-11-05)
 
 - WoW Forever: killing blows on enemy players are counted again, from the game's own statistic
