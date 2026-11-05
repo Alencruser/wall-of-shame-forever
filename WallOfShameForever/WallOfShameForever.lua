@@ -59,10 +59,22 @@ local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Wall of Shame|r: " .. msg)
 end
 
+-- One key per player. Forever has first and last names: the game writes "Chamy Chan" in chat and
+-- in system messages, but "Chamy-Chan" elsewhere, so a dash left after removing our realm is a space.
 local function ShortName(name)
     if not name then return nil end
-    if Ambiguate then return Ambiguate(name, "none") end
-    return (name:match("^[^-]+")) or name
+    local short = Ambiguate and Ambiguate(name, "none") or (name:match("^[^-]+")) or name
+    return (short:gsub("%-", " "))
+end
+
+-- Our own name and realm. On Forever, UnitFullName("player") gives the first name and the LAST
+-- NAME in place of the realm ("Chamy", "Chan"): the real realm comes from GetNormalizedRealmName.
+local function MyNameAndRealm()
+    local name, second = UnitFullName("player")
+    local realm = GetNormalizedRealmName and GetNormalizedRealmName() or nil
+    if not realm or realm == "" then realm = second or "" end
+    if second and second ~= "" and second ~= realm then name = name .. " " .. second end
+    return name, realm
 end
 
 local function ClassColored(name, classFile)
@@ -633,8 +645,7 @@ end
 
 -- The battletag lets the bot find the Discord member (its battletag directory)
 local function Identity()
-    local name, realm = UnitFullName("player")
-    realm = realm or GetNormalizedRealmName() or ""
+    local name, realm = MyNameAndRealm()
     local battleTag = BNGetInfo and select(2, BNGetInfo()) or ""
     return name, realm, GetGuildInfo("player") or "", battleTag or ""
 end
@@ -971,10 +982,27 @@ frame:SetScript("OnEvent", function(_, event, ...)
         db.members = db.members or {}
         db.log = db.log or {}
         db.outbox = db.outbox or {}
+        -- before 0.2.1, "Chamy-Chan" and "Chamy Chan" were two players: keep one
+        local dashed = {}
+        for key in pairs(db.members) do
+            if key:find("-", 1, true) then dashed[#dashed + 1] = key end
+        end
+        for _, key in ipairs(dashed) do
+            local fixed = key:gsub("%-", " ")
+            db.members[fixed] = db.members[fixed] or db.members[key]
+            db.members[key] = nil
+        end
+        -- Private build for a guild (PrivateCode.lua, not in the public addon): as if the player
+        -- had typed /wos code. Never after leaving a guild (codeRemoved), and the officers' code
+        -- in the guild information still takes over (ReadConnection).
+        local builtin = ns.BUILTIN_CODE
+        if not db.connection and not db.codeRemoved and type(builtin) == "string"
+            and builtin:match("^" .. CODE_PATTERN .. "$") then
+            db.connection = builtin
+        end
     elseif event == "PLAYER_LOGIN" then
         playerGUID = UnitGUID("player")
-        local name, realm = UnitFullName("player")
-        realm = realm or GetNormalizedRealmName() or ""
+        local name, realm = MyNameAndRealm()
         playerName = realm ~= "" and (name .. "-" .. realm) or name
         if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
             C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)

@@ -1,5 +1,12 @@
 # Wall of Shame Forever
 
+## v0.2.1 (2026-11-05)
+
+- WoW Forever: characters have a first and a last name ("Chamy Chan"), which the game gave the
+  addon as name and realm. The addon now recognizes its own player: no more second level-up
+  banner, no own pin on the map, duels won are counted for the bot again, and the bot gets
+  the real name and realm. The double lines in the roster window are merged
+
 ## v0.2.0 (2026-11-04)
 
 - New banners for level-ups, deaths and duels; one level-up banner for every class
