@@ -2,9 +2,11 @@
 
 Small Windows program that sends **your own** deaths to the guild's Discord bot.
 
-- **Realtime**: when you die, the addon shows a small strip of colored squares in the top-left
-  corner for 3 seconds. The companion reads it from the screen (WoW must be the active window)
-  and takes a screenshot of the death screen at the same moment.
+- **Realtime**: when you die, the addon shows a small strip of colored squares for 3 seconds, in
+  the top-left corner by default (`/wos options` or `/wos strip`: any corner or the middle of an
+  edge, never the middle of the screen). The companion looks at every position by itself (WoW
+  must be the active window) and takes a screenshot of the death screen at the same moment,
+  without the strip.
 - **Fallback**: every death is also kept in the addon's SavedVariables. WoW writes that file on
   `/reload`, logout or exit, and the companion sends what the strip missed (no screenshot).
 
@@ -170,8 +172,9 @@ and `WallOfShameCompanion-Intel.dmg` for Intel Macs.
   an update, macOS may ask again.
 - **Uninstall**: menu bar icon > **Uninstall…** (removes the app, the login item and
   `~/Library/Application Support/WallOfShameCompanion`).
-- The WoW window must be the active one, windowed or fullscreen. The strip is searched near the
-  window's corner (title bar included) and Retina screens are handled (2 pixels per point).
+- The WoW window must be the active one, windowed or fullscreen. The strip is searched around
+  its position (title bar included) and Retina screens are handled (2 pixels per point). With
+  the strip at the bottom or in the middle of an edge, the title bar stays in the screenshot.
 
 The `.app` can only be built on a Mac: the GitHub Actions workflow `companion` builds it (and the
 Windows `.exe`) on GitHub's machines. For players, push a tag `companion-v0.2.0`: the `.exe` and

@@ -204,27 +204,28 @@ def grab(sct, area):
     return Image.frombytes("RGB", shot.size, shot.bgra, "raw", "BGRX")
 
 
+# Strip positions (strip.POSITIONS): the one of the last strip first, then one other per pass,
+# so every position is looked at within 1.6 s while a strip stays 3 s on screen
+SCAN = {"last": "TOPLEFT", "turn": 0}
+
+
 def read_strip(sct, area):
-    """(payload, strip_bottom in capture pixels, capture pixels per area unit), or None.
-    Windows: the client area in real pixels, the strip right at its corner. macOS: the window
-    bounds in points (title bar included), the strip drawn in physical pixels: searched near the
-    corner, with the block size of the capture (Retina captures can be 1x or 2x)."""
-    if area["exact"]:
-        if area["width"] < strip.WIDTH or area["height"] < strip.MAX_HEIGHT:
-            return None
-        found = strip.decode(grab(sct, dict(area, width=strip.WIDTH, height=strip.MAX_HEIGHT)))
-        return found and (*found, 1.0)
-    scale = area["scale"] or 1.0
-    width = min(area["width"], int(strip.WIDTH / scale) + MAC_MARGIN_X + 1)
-    height = min(area["height"], int(strip.MAX_HEIGHT / scale) + MAC_MARGIN_Y + 1)
-    corner = grab(sct, dict(area, width=width, height=height))
-    per_unit = corner.width / width  # capture pixels per point
-    block = strip.BLOCK * per_unit / scale
-    max_dx, max_dy = int(MAC_MARGIN_X * per_unit), int(MAC_MARGIN_Y * per_unit)
-    # as captured, else back from the screen's colour profile (Display P3) to the game's colours
-    found = strip.locate(corner, block, max_dx, max_dy) \
-        or strip.locate(strip.from_display_p3(corner), block, max_dx, max_dy)
-    return found and (*found, per_unit)
+    """(payload, strip box in capture pixels, position), or None.
+    Windows: the client area in real pixels, the strip exactly at its anchor. macOS: the window
+    bounds in points (title bar included), the strip drawn in physical pixels: searched around its
+    anchor, with the block size of the capture (Retina captures can be 1x or 2x)."""
+    others = [p for p in strip.POSITIONS if p != SCAN["last"]]
+    other = others[SCAN["turn"] % len(others)]
+    SCAN["turn"] += 1
+    margins = (0, 0) if area["exact"] else (MAC_MARGIN_X, MAC_MARGIN_Y)
+    for position in (SCAN["last"], other):
+        found = strip.read(lambda region: grab(sct, region), area, position, *margins,
+                           display_p3=not area["exact"])
+        if found:
+            SCAN["last"] = position
+            payload, box, _ = found
+            return payload, box, position
+    return None
 
 
 def check_strip(sct, state, sender):
@@ -234,14 +235,13 @@ def check_strip(sct, state, sender):
     found = read_strip(sct, area)
     if not found:
         return
-    payload, strip_bottom, _ = found
+    payload, box, position = found
     ev = events.parse_payload(payload, "realtime")
     if not ev or ev["type"] not in ("death", "level", "duel") or ev["id"] in state:
         return
     state.add(ev["id"])
-    # the game screen, without the strip rows (and on macOS the title bar above them)
-    screen = grab(sct, area)
-    screen = screen.crop((0, strip_bottom, screen.width, screen.height))
+    # the game screen without the strip (and, strip at the top, on macOS without the title bar)
+    screen = strip.hide(grab(sct, area), box, position)
     buf = io.BytesIO()
     screen.save(buf, "JPEG", quality=85)
     if ev["type"] == "level":

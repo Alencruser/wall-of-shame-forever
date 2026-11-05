@@ -16,10 +16,10 @@ Made for **WoW Forever**. Everyone in the guild installs the addon.
 
 - **Level-ups**: a golden banner with its own sound, a chat line, for every level of every guildmate. Your own level-ups are posted in guild chat too.
 - **Deaths**: a bloody red banner with a skull, its own sound, and a chat line with the level, the zone and **who killed them** (with its level; falls, drowning and lava count too).
-- **Duels lost against a guildmate**: an iron banner with broken swords and its own sound for the loser, on everyone's screen.
+- **Duels lost against a guildmate**: an iron banner with broken swords and its own sound, on everyone's screen. In French, a random sentence ("X a terrassé Y", "Y s'est fait hagar par X"...), the same for the whole guild.
 - **Guild map**: guildmates with the addon appear on the world map in their class color, other continents included (Azeroth view), with level, zone and the age of the position on hover. Updated every 15 seconds, shared only with your guild. Don't want to be seen? Untick it in `/wos options`.
 - **Guild roster** (`/wos`): name, level, zone, last seen and number of deaths of every member.
-- **No guild yet?** `/wos code <code>` shares deaths with everyone who pasted the same code, until the guild exists.
+- **No guild yet?** `/wos code <code>` shares everything (banners, duels, map) with everyone who pasted the same code, until the guild exists.
 
 Deaths are only shared inside your own guild.
 
@@ -38,7 +38,13 @@ Officers set it up once in game: `/wos code <code from the bot>` (stored in the 
 
 Privacy: only **your own** events are sent, to **your guild's** bot, with your character name, level, class, zone and Battle.net battletag (so the bot can find your Discord account). Nothing is sent without the companion program and a code from your guild.
 
-**Companion program:** source code and downloads on GitHub, [github.com/Alencruser/wall-of-shame-forever](https://github.com/Alencruser/wall-of-shame-forever). The repository opens on **launch day (November 4)**. It is **only for the optional Discord companion**: the addon itself is the one on this page, nothing else to download to play with it.
+**Download the companion program** (only for the optional Discord part, the addon itself is the one on this page):
+
+- [Windows (.exe)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.2.0/WallOfShameCompanion.exe)
+- [macOS Apple Silicon, M1 and later (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.2.0/WallOfShameCompanion.dmg)
+- [macOS Intel (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.2.0/WallOfShameCompanion-Intel.dmg)
+
+Not signed: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks to confirm in System Settings > Privacy & Security (Open Anyway). Release page and source code: [companion v0.2.0 on GitHub](https://github.com/Alencruser/wall-of-shame-forever/releases/tag/companion-v0.2.0).
 
 ## Commands
 
@@ -53,6 +59,7 @@ Privacy: only **your own** events are sent, to **your guild's** bot, with your c
 | `/wos sound` | toggle sound |
 | `/wos map` | show/hide yourself on the guild's world map |
 | `/wos volume 20\|40\|60\|80\|100` | volume of the banner sounds |
+| `/wos strip <position>` | where the companion's strip shows: `topleft` (default), `top`, `topright`, `left`, `right`, `bottomleft`, `bottom`, `bottomright` (also in `/wos options`) |
 | `/wos lang auto\|en\|fr` | addon language: auto follows the game client (default), or force English or French |
 | `/wos test` | preview the banners |
 | `/wos code <code>` | officers: set the Discord code for the guild (without a guild: your own) |

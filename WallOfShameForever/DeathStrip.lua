@@ -1,6 +1,7 @@
 -- Wall of Shame Forever: death strip
--- Draws a short-lived strip of colored blocks in the top-left corner so the
--- companion program can read a death in real time from a screen capture.
+-- Draws a short-lived strip of colored blocks in a corner or at the middle of an edge of the
+-- game screen (option, top left by default) so the companion program can read a death in real
+-- time from a screen capture. It looks at every position, the player sets nothing there.
 -- The decoder lives in companion/strip.py: keep both in sync.
 
 local _, ns = ...
@@ -50,22 +51,49 @@ function ns.EncodeStrip(payload)
     return blocks
 end
 
+-- Where the strip can be (never in the middle of the screen). The frame always has room for the
+-- longest payload, so the blocks start at the same spot whatever the length: the companion
+-- computes it from the window size (companion/strip.py, POSITIONS and MAX_HEIGHT)
+ns.STRIP_POSITIONS = { "TOPLEFT", "TOP", "TOPRIGHT", "LEFT", "RIGHT", "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" }
+local VALID = {}
+for _, p in ipairs(ns.STRIP_POSITIONS) do VALID[p] = true end
+local MAX_ROWS = math.ceil((#HEADER + math.ceil((MAX_PAYLOAD + 4) * 4 / 3)) / COLS)
+
+function ns.StripPosition()
+    local db = ns.GetDB and ns.GetDB()
+    local p = db and db.stripPosition
+    return VALID[p] and p or "TOPLEFT"
+end
+
+-- size of one block (BLOCK physical pixels) in the units of a frame on WorldFrame
+local function BlockSize(frame)
+    local _, physHeight = GetPhysicalScreenSize()
+    return BLOCK * 768 / (physHeight * frame:GetEffectiveScale())
+end
+
+local function NewFrame()
+    -- WorldFrame stays visible when the UI is hidden with Alt+Z
+    local f = CreateFrame("Frame", nil, WorldFrame)
+    f:SetFrameStrata("TOOLTIP")
+    f:SetFrameLevel(10000)
+    return f
+end
+
+local function Place(frame, size)
+    local p = ns.StripPosition()
+    frame:ClearAllPoints()
+    frame:SetPoint(p, WorldFrame, p, 0, 0)
+    frame:SetSize(COLS * size, MAX_ROWS * size)
+end
+
 local strip, textures, hideToken = nil, {}, nil
 
 function ns.ShowStrip(payload)
     if not GetPhysicalScreenSize then return end
     local blocks = ns.EncodeStrip(payload)
-    if not strip then
-        -- WorldFrame stays visible when the UI is hidden with Alt+Z
-        strip = CreateFrame("Frame", nil, WorldFrame)
-        strip:SetFrameStrata("TOOLTIP")
-        strip:SetFrameLevel(10000)
-        strip:SetPoint("TOPLEFT", WorldFrame, "TOPLEFT", 0, 0)
-    end
-
-    -- size of one physical pixel in this frame's units
-    local _, physHeight = GetPhysicalScreenSize()
-    local size = BLOCK * 768 / (physHeight * strip:GetEffectiveScale())
+    strip = strip or NewFrame()
+    local size = BlockSize(strip)
+    Place(strip, size)
 
     for i, block in ipairs(blocks) do
         local tex = textures[i]
@@ -81,12 +109,31 @@ function ns.ShowStrip(payload)
         tex:Show()
     end
     for i = #blocks + 1, #textures do textures[i]:Hide() end
-    strip:SetSize(COLS * size, math.ceil(#blocks / COLS) * size)
     strip:Show()
 
     local token = {}
     hideToken = token
     C_Timer.After(SHOW_TIME, function()
         if hideToken == token then strip:Hide() end
+    end)
+end
+
+-- Options: shows for 2 seconds where the strip goes, as a plain golden box (one colour: the
+-- companion never reads it as a strip)
+local preview, previewToken
+function ns.PreviewStrip()
+    if not GetPhysicalScreenSize then return end
+    if not preview then
+        preview = NewFrame()
+        local fill = preview:CreateTexture(nil, "OVERLAY")
+        fill:SetAllPoints()
+        fill:SetColorTexture(1, 0.82, 0.2, 0.8)
+    end
+    Place(preview, BlockSize(preview))
+    preview:Show()
+    local token = {}
+    previewToken = token
+    C_Timer.After(2, function()
+        if previewToken == token then preview:Hide() end
     end)
 end

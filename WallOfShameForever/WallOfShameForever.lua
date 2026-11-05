@@ -18,6 +18,7 @@ local DEFAULTS = {
     shareLocation = true, -- own position on the guildmates' world map (GuildMap.lua)
     discord = true,       -- own deaths for the companion, once officers set the guild up
     language = "auto",    -- "auto" (game client's language), "en" or "fr": see Locales.lua
+    stripPosition = "TOPLEFT", -- where the companion's strip shows (DeathStrip.lua, ns.STRIP_POSITIONS)
 }
 local MAX_OUTBOX = 200 -- WoW writes it only on /reload or logout: room for a PvP evening
 local CODE_PATTERN = "swf1%.[%w_%-]+" -- bot connection code, see companion/connection.py
@@ -1124,7 +1125,7 @@ end
 
 local function CreateOptions()
     options = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent, "BasicFrameTemplateWithInset")
-    options:SetSize(360, 410)
+    options:SetSize(360, 520)
     options:SetPoint("CENTER")
     options:SetMovable(true)
     options:EnableMouse(true)
@@ -1203,6 +1204,54 @@ local function CreateOptions()
         options.languages[i] = cb
     end
 
+    -- Companion: where its strip shows, a small screen of 3 x 3 boxes (never the middle one)
+    options.stripHeading = Heading(options, -364)
+    local screen = CreateFrame("Frame", nil, options)
+    screen:SetSize(96, 60)
+    screen:SetPoint("TOPLEFT", 24, -386)
+    local bg = screen:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.6)
+    options.stripCells = {}
+    local grid = { { "TOPLEFT", "TOP", "TOPRIGHT" }, { "LEFT", false, "RIGHT" },
+        { "BOTTOMLEFT", "BOTTOM", "BOTTOMRIGHT" } }
+    for row, positions in ipairs(grid) do
+        for col, pos in ipairs(positions) do
+            local cell = CreateFrame("Button", nil, screen)
+            cell:SetSize(28, 16)
+            cell:SetPoint("TOPLEFT", 4 + (col - 1) * 30, -4 - (row - 1) * 18)
+            cell.tex = cell:CreateTexture(nil, "ARTWORK")
+            cell.tex:SetAllPoints()
+            if pos then
+                cell.pos = pos
+                local glow = cell:CreateTexture(nil, "HIGHLIGHT")
+                glow:SetAllPoints()
+                glow:SetColorTexture(1, 1, 1, 0.3)
+                cell:SetScript("OnClick", function()
+                    db.stripPosition = pos
+                    if ns.PreviewStrip then ns.PreviewStrip() end
+                    RefreshOptions()
+                end)
+                cell:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText(L("strip_pos_" .. pos))
+                    GameTooltip:Show()
+                end)
+                cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                options.stripCells[#options.stripCells + 1] = cell
+            else
+                cell.tex:SetColorTexture(0.12, 0.12, 0.12, 0.8) -- the middle: not allowed
+                cell:EnableMouse(false)
+            end
+        end
+    end
+    options.stripName = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    options.stripName:SetPoint("TOPLEFT", screen, "TOPRIGHT", 14, -4)
+    options.stripHint = options:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    options.stripHint:SetPoint("TOPLEFT", options.stripName, "BOTTOMLEFT", 0, -6)
+    options.stripHint:SetWidth(200)
+    options.stripHint:SetJustifyH("LEFT")
+
     options.test = CreateFrame("Button", nil, options, "UIPanelButtonTemplate")
     options.test:SetSize(200, 24)
     options.test:SetPoint("BOTTOM", 0, 16)
@@ -1248,6 +1297,17 @@ RefreshOptions = function()
         cb.label:SetText(L(cb.lang == "auto" and "lang_auto" or ("lang_" .. cb.lang)))
         cb:SetChecked(db.language == cb.lang)
     end
+    options.stripHeading:SetText(L("sect_companion"))
+    local stripPos = ns.StripPosition and ns.StripPosition() or "TOPLEFT"
+    for _, cell in ipairs(options.stripCells) do
+        if cell.pos == stripPos then
+            cell.tex:SetColorTexture(1, 0.82, 0, 0.95)
+        else
+            cell.tex:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+        end
+    end
+    options.stripName:SetText(L("strip_pos_" .. stripPos))
+    options.stripHint:SetText(L("opt_strip_hint"))
     options.test:SetText(L("btn_test"))
 end
 
@@ -1301,7 +1361,7 @@ local function Debug()
         .. ", client " .. tostring((select(4, GetBuildInfo()))) .. " " .. tostring(GetLocale and GetLocale()))
     line("in a guild: " .. yes(IsInGuild()) .. " " .. tostring(GetGuildInfo("player") or "")
         .. (db.guildName and (" (remembered: " .. db.guildName .. ")") or ""))
-    line("code: " .. tostring(db.connection or "none"))
+    line("code: " .. tostring(db.connection or "none") .. ", strip: " .. tostring(ns.StripPosition and ns.StripPosition()))
     local id = channelName and GetChannelName(channelName) or 0
     line("code channel: " .. tostring(channelName or "none (in a guild or no code)")
         .. (channelName and (", joined: " .. yes(id and id > 0) .. " (#" .. tostring(id) .. ")") or ""))
@@ -1405,6 +1465,17 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
             Print(L("volume_set", db.volume))
             Print(L("volume_usage"))
         end
+    elseif msg == "strip" or msg:match("^strip%s") then
+        local args = { topleft = "TOPLEFT", top = "TOP", topright = "TOPRIGHT", left = "LEFT", right = "RIGHT",
+            bottomleft = "BOTTOMLEFT", bottom = "BOTTOM", bottomright = "BOTTOMRIGHT" }
+        local pos = args[msg:match("^strip%s+(%a+)$") or ""]
+        if pos then
+            db.stripPosition = pos
+            if ns.PreviewStrip then ns.PreviewStrip() end
+            RefreshOptions()
+        end
+        Print(L("strip_pos_set", L("strip_pos_" .. ns.StripPosition())))
+        if not pos then Print(L("strip_usage")) end
     elseif msg == "test" then
         TestBanners()
     elseif msg == "sync" then

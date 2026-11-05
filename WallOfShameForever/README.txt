@@ -45,6 +45,8 @@ COMMANDS
 /wos sound   toggle sound
 /wos map     show/hide yourself on the guild's world map
 /wos volume 20|40|60|80|100  volume of the banner sounds
+/wos strip <position>  where the companion's strip shows: topleft (default), top, topright,
+             left, right, bottomleft, bottom, bottomright (also in /wos options)
 /wos lang auto|en|fr  addon language (auto = language of the game client, default)
 /wos sync    request the current state from the guild
 /wos test    preview banners and sound (only visible to you)

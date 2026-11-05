@@ -1,5 +1,13 @@
 # Wall of Shame Forever
 
+## v0.3.0 (2026-11-05)
+
+- Position of the companion's strip: top left (default), top center, top right, middle left,
+  middle right, bottom left, bottom center or bottom right, never the middle of the screen.
+  A small 3 x 3 screen in `/wos options` (the chosen box in gold, a golden preview on the game
+  screen for 2 seconds), or `/wos strip <position>`. Outside the top left it needs companion
+  0.3.0, which looks at every position by itself and keeps the strip out of the screenshot
+
 ## v0.2.1 (2026-11-05)
 
 - WoW Forever: characters have a first and a last name ("Chamy Chan"), which the game gave the

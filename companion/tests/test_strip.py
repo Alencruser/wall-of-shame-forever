@@ -107,6 +107,72 @@ class StripTest(unittest.TestCase):
             rows = -(-len(blocks) // strip.COLS)
             self.assertEqual(bottom, origin[1] + rows * block)
 
+    def window_with_strip(self, payload, position, width, height, block, origin=(0, 0), seed=0, rounding=0):
+        """A game window (capture pixels) with the strip anchored like the addon does: a frame of
+        WIDTH x MAX_HEIGHT physical pixels at that point of the game area, which starts at
+        origin (macOS title bar). rounding: how the game rounds a centered frame (0 down, 1 up)."""
+        blocks = to_py(self.encode(payload))
+        sw, sh = strip.COLS * block, -(-strip.MAX_BLOCKS // strip.COLS) * block
+        game_w, game_h = width - origin[0], height - origin[1]
+        col, row = strip.POSITIONS[position]
+        x = origin[0] + (0, (game_w - sw + rounding) // 2, game_w - sw)[col]
+        y = origin[1] + (0, (game_h - sh + rounding) // 2, game_h - sh)[row]
+        return render(blocks, size=(width, height), block_px=block, origin=(x, y), seed=seed), (x, y)
+
+    def test_every_position_windows(self):
+        """Windows: client area in real pixels. Odd sizes and both roundings for the centered ones."""
+        payload = "2|L|Chamy Chan-Realm:L13|Chamy Chan|Realm||13|MAGE|1|A#1|1|Duskwood"
+        for size in ((640, 400), (641, 401)):
+            for rounding in (0, 1):
+                for i, position in enumerate(strip.POSITIONS):
+                    img, (x, y) = self.window_with_strip(payload, position, *size, strip.BLOCK, seed=i,
+                                                         rounding=rounding)
+                    area = {"left": 0, "top": 0, "width": size[0], "height": size[1], "exact": True, "scale": 1.0}
+                    capture = lambda r: img.crop((r["left"], r["top"], r["left"] + r["width"], r["top"] + r["height"]))
+                    found = strip.read(capture, area, position)
+                    self.assertIsNotNone(found, (size, rounding, position))
+                    decoded, box, per_unit = found
+                    self.assertEqual(decoded, payload)
+                    self.assertEqual(per_unit, 1.0)
+                    self.assertTrue(box[0] <= x + 2 and box[1] <= y + 2, (position, box, x, y))
+                    # nowhere else: another position never reads this strip
+                    for other in strip.POSITIONS:
+                        if other != position:
+                            self.assertIsNone(strip.read(capture, area, other), (position, other))
+
+    def test_every_position_macos_retina(self):
+        """macOS: window bounds in points with a 28 pt title bar, Retina screen (2 physical pixels per
+        point) captured at 2x: the strip, drawn in physical pixels, has 4 px blocks in the capture."""
+        payload = "2|D|Tarkos Moss-Realm:1|Tarkos Moss|Realm||23|WARRIOR|Duskwood|Hogger|11|1|"
+        width_pt, height_pt, title_pt = 300, 160, 28
+        for i, position in enumerate(strip.POSITIONS):
+            img, _ = self.window_with_strip(payload, position, width_pt * 2, height_pt * 2, strip.BLOCK,
+                                            origin=(0, title_pt * 2), seed=i)
+            area = {"left": 0, "top": 0, "width": width_pt, "height": height_pt, "exact": False, "scale": 2.0}
+            capture = lambda r: img.crop((r["left"] * 2, r["top"] * 2, (r["left"] + r["width"]) * 2,
+                                          (r["top"] + r["height"]) * 2))
+            found = strip.read(capture, area, position, 8, 48, display_p3=True)
+            self.assertIsNotNone(found, position)
+            self.assertEqual(found[0], payload)
+            self.assertEqual(found[2], 2.0)
+
+    def test_hide_strip_in_screenshot(self):
+        """The screenshot never shows the strip: cut at the top and bottom edges, covered elsewhere."""
+        payload = "2|W|Moi-Forever:W1.1|Moi|Forever||12|WARRIOR|1|Moi#1234|Pote|Dun Morogh"
+        for i, position in enumerate(strip.POSITIONS):
+            img, _ = self.window_with_strip(payload, position, 400, 240, strip.BLOCK, seed=i)
+            area = {"left": 0, "top": 0, "width": 400, "height": 240, "exact": True, "scale": 1.0}
+            capture = lambda r: img.crop((r["left"], r["top"], r["left"] + r["width"], r["top"] + r["height"]))
+            _, box, _ = strip.read(capture, area, position)
+            shot = strip.hide(img, box, position)
+            self.assertIsNone(strip.find(shot, strip.BLOCK, range(shot.width - strip.WIDTH + 1),
+                                         range(shot.height)), position)
+            row = strip.POSITIONS[position][1]
+            if row == 1:
+                self.assertEqual(shot.size, img.size)  # covered, the screenshot keeps its size
+            else:
+                self.assertGreater(shot.height, img.height - strip.MAX_HEIGHT - 4)
+
     def test_no_strip(self):
         self.assertIsNone(strip.decode(render([], seed=5)))
 
