@@ -132,6 +132,7 @@ ns.LOCALES.en = {
         "/wos striptest - send a test death through the companion (bot admins only)",
         "/wos striptest level - send a test level-up through the companion (bot admins only)",
         "/wos striptest duel - send a test duel win through the companion (bot admins only)",
+        "/wos striptest kill - send a test killing blow through the companion (bot admins only)",
     },
 
     -- classes
@@ -289,6 +290,7 @@ ns.LOCALES.fr = {
         "/wos striptest - envoyer une mort de test via le companion (admins du bot seulement)",
         "/wos striptest level - envoyer un level-up de test via le companion (admins du bot seulement)",
         "/wos striptest duel - envoyer un duel gagné de test via le companion (admins du bot seulement)",
+        "/wos striptest kill - envoyer un coup fatal de test via le companion (admins du bot seulement)",
     },
 
     -- classes

@@ -59,6 +59,7 @@ COMMANDS
 /wos striptest         send a test death through the companion (bot admins only)
 /wos striptest level   send a test level-up through the companion (bot admins only)
 /wos striptest duel    send a test duel win through the companion (bot admins only)
+/wos striptest kill    send a test killing blow through the companion (bot admins only)
 ==================================================================
 IF THE ADDON IS MARKED AS "OUT OF DATE"
 The addon targets interface 16001 (Forever). If a patch changes the number:

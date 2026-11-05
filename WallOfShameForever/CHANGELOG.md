@@ -1,11 +1,20 @@
 # Wall of Shame Forever
 
+## v0.4.0 (2026-11-05)
+
+- WoW Forever: killing blows on enemy players are counted again, from the game's own statistic
+  "World Killing Blows" (the combat log is closed to addons). The victim is the dead enemy player
+  in view when there is one
+- Killing blows go out live on the strip: the bot posts them with a screenshot of the killer's
+  screen in its killing blows channel (companion 0.4.0). `/wos striptest kill` to try it
+
 ## v0.3.1 (2026-11-05)
 
 - WoW Forever: the killer is back on death banners and on Discord. Blizzard closes the combat
   log to addons on this client, so the addon now reads the game's death recap instead (the mob
   or player who landed the last hit, or a fall, drowning, lava...)
-- Killing blows on enemy players cannot be counted on WoW Forever (combat log closed)
+- Killing blows on enemy players cannot be counted on WoW Forever (combat log closed; back in
+  v0.4.0)
 
 ## v0.3.0 (2026-11-05)
 

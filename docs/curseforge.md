@@ -31,6 +31,7 @@ With your guild's Discord bot and the companion program (Windows and macOS):
 
 - your **deaths** and **level-ups** are posted with a screenshot of your screen at that moment
 - **duels won against guildmates** are posted with the winner's screenshot, both players mentioned
+- **killing blows** on players of the other faction are posted with the killer's screenshot
 - a **ranking**: duels won against guildmates and killing blows on players of the other faction
 - your **level per class** for the bot's member directory
 
@@ -40,11 +41,11 @@ Privacy: only **your own** events are sent, to **your guild's** bot, with your c
 
 **Download the companion program** (only for the optional Discord part, the addon itself is the one on this page):
 
-- [Windows (.exe)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.3.0/WallOfShameCompanion.exe)
-- [macOS Apple Silicon, M1 and later (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.3.0/WallOfShameCompanion.dmg)
-- [macOS Intel (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.3.0/WallOfShameCompanion-Intel.dmg)
+- [Windows (.exe)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.4.0/WallOfShameCompanion.exe)
+- [macOS Apple Silicon, M1 and later (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.4.0/WallOfShameCompanion.dmg)
+- [macOS Intel (.dmg)](https://github.com/Alencruser/wall-of-shame-forever/releases/download/companion-v0.4.0/WallOfShameCompanion-Intel.dmg)
 
-Not signed: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks to confirm in System Settings > Privacy & Security (Open Anyway). Release page and source code: [companion v0.3.0 on GitHub](https://github.com/Alencruser/wall-of-shame-forever/releases/tag/companion-v0.3.0).
+Not signed: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks to confirm in System Settings > Privacy & Security (Open Anyway). Release page and source code: [companion v0.4.0 on GitHub](https://github.com/Alencruser/wall-of-shame-forever/releases/tag/companion-v0.4.0).
 
 ## Commands
 

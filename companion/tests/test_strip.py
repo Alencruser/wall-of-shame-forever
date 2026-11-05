@@ -208,6 +208,31 @@ class OutboxTest(unittest.TestCase):
                          ("kill", "Garrosh", 31, "WARRIOR", "Barrens"))
         self.assertIsNone(events.parse_payload("2|K|A-R:K1|A|R|G|30|ROGUE|1|A#1|Garrosh||", "savedvariables"))
 
+    def test_killing_blow_on_the_strip_sent_with_screenshot(self):
+        import wallofshame_companion as app
+
+        payload = "2|K|A-R:K1.2|A|R|G|30|ROGUE|1|A#1|?|||Ashenvale"
+        pushed = []
+
+        class Sender:
+            def push(self, ev, jpeg):
+                pushed.append((ev, jpeg))
+
+        saved = (app.osplat.wow_window, app.read_strip, app.grab)
+        try:
+            app.osplat.wow_window = lambda: {"exact": True}
+            app.read_strip = lambda sct, area: (payload, (0, 0, 10, 10), "TOPLEFT")
+            app.grab = lambda sct, area: Image.new("RGB", (100, 100))
+            state = set()
+            app.check_strip(None, state, Sender())
+            app.check_strip(None, state, Sender())  # same strip still on screen: sent once
+        finally:
+            app.osplat.wow_window, app.read_strip, app.grab = saved
+        self.assertEqual(len(pushed), 1)
+        ev, jpeg = pushed[0]
+        self.assertEqual((ev["type"], ev["victim"], ev["source"]), ("kill", "?", "realtime"))
+        self.assertTrue(jpeg)
+
     def test_rejects_old_or_broken_payloads(self):
         for p in ["1|a|b|c|d|1|MAGE|z|k|1|1", "2|X|a", "2|L|too|few", ""]:
             self.assertIsNone(events.parse_payload(p, "savedvariables"), p)

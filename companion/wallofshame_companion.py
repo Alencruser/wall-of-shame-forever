@@ -237,7 +237,7 @@ def check_strip(sct, state, sender):
         return
     payload, box, position = found
     ev = events.parse_payload(payload, "realtime")
-    if not ev or ev["type"] not in ("death", "level", "duel") or ev["id"] in state:
+    if not ev or ev["type"] not in ("death", "level", "duel", "kill") or ev["id"] in state:
         return
     state.add(ev["id"])
     # the game screen without the strip (and, strip at the top, on macOS without the title bar)
@@ -248,6 +248,8 @@ def check_strip(sct, state, sender):
         log(f"level-up seen on screen: {ev['name']} level {ev['level']} in {ev['zone']}")
     elif ev["type"] == "duel":
         log(f"duel won seen on screen: {ev['name']} vs {ev['opponent']} in {ev['zone']}")
+    elif ev["type"] == "kill":
+        log(f"killing blow seen on screen: {ev['name']} on {ev['victim']} in {ev['zone']}")
     else:
         log(f"death seen on screen: {ev['name']} level {ev['level']} in {ev['zone']}, killer: {ev['killer']}")
     sender.push(ev, buf.getvalue())

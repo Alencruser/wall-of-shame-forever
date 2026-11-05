@@ -850,8 +850,76 @@ OnKillingBlow = function(guid, victim, flags)
     if not hostile then return end
     local _, victimClass = GetPlayerInfoByGUID(guid)
     local level = FindUnitLevel(guid)
-    QueueScore("K", { ShortName(victim) or "", level and tostring(level) or "", victimClass or "", GetRealZoneText() or "" })
+    -- on the strip too: posted right away, with a screenshot of the killer's screen
+    local payload = QueueScore("K", { ShortName(victim) or "?", level and tostring(level) or "", victimClass or "",
+        GetRealZoneText() or "" })
+    if payload then ns.ShowStrip(payload) end
     AddLog(L("log_killing_blow", ShortName(victim) or "?"))
+end
+
+-- WoW Forever: addons may not read the combat log, but the game keeps its own statistic
+-- "World Killing Blows" (killing blows on enemy players outside battlegrounds). It is read again
+-- after each honor event and after each fight; every step up is one of our killing blows.
+-- The victim is the dead enemy player in view (target, mouseover, nameplates) when there is one.
+local STAT_WORLD_KB = 1488
+local KB_SETTLE = 1.5 -- seconds: the statistic moves a moment after the kill
+local KB_MAX_STEP = 10 -- a bigger jump is the statistic loading late, not kills
+local lastWorldKB, kbCheckPending
+
+local function WorldKB()
+    if not GetStatistic then return nil end
+    local ok, value = pcall(GetStatistic, STAT_WORLD_KB)
+    if not ok or value == nil then return nil end
+    return tonumber((tostring(value):gsub("[^%d]", ""))) or 0 -- "--" when never counted
+end
+
+local function Secret(v)
+    return issecretvalue and issecretvalue(v)
+end
+
+local function DeadEnemyInView()
+    local units = { "target", "mouseover", "focus" }
+    for i = 1, 40 do units[#units + 1] = "nameplate" .. i end
+    for _, unit in ipairs(units) do
+        local ok, found = pcall(function()
+            return UnitExists(unit) and UnitIsPlayer(unit) and UnitIsDeadOrGhost(unit) and UnitIsEnemy("player", unit)
+        end)
+        if ok and found == true then
+            local name, level, class = UnitName(unit), UnitLevel(unit), select(2, UnitClass(unit))
+            if not (Secret(name) or Secret(level) or Secret(class)) then return name, level, class end
+        end
+    end
+end
+
+local function CheckWorldKB()
+    kbCheckPending = nil
+    local now = WorldKB()
+    if not now then return end
+    local gained = lastWorldKB and now - lastWorldKB or 0
+    lastWorldKB = now
+    if gained <= 0 or gained > KB_MAX_STEP then return end
+    local victim, level, class = DeadEnemyInView()
+    local payload
+    for i = 1, gained do
+        local known = i == gained and victim -- several at once: the one in view is the last
+        payload = QueueScore("K", { known and ShortName(victim) or "?", known and level and tostring(level) or "",
+            known and class or "", GetRealZoneText() or "" })
+        AddLog(L("log_killing_blow", known and ShortName(victim) or "?"))
+    end
+    -- the last one on the strip: posted right away with a screenshot of the killer's screen
+    -- (the others reach the bot with the SavedVariables)
+    if payload then ns.ShowStrip(payload) end
+end
+
+local function ScheduleWorldKB()
+    if kbCheckPending then return end
+    kbCheckPending = true
+    C_Timer.After(KB_SETTLE, CheckWorldKB)
+end
+
+-- After each loading screen: the current value is the starting point, nothing counted
+local function BaselineWorldKB()
+    lastWorldKB = WorldKB() or lastWorldKB
 end
 
 local function OnOwnDeath()
@@ -1000,9 +1068,14 @@ frame:RegisterEvent("GUILD_ROSTER_UPDATE")
 frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
+frame:RegisterEvent("PLAYER_REGEN_ENABLED")
 if CombatLogGetCurrentEventInfo then
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+else
+    -- WoW Forever: killing blows from the game's statistic (see CheckWorldKB)
+    for _, event in ipairs({ "PLAYER_PVP_KILLS_CHANGED", "CHAT_MSG_COMBAT_HONOR_GAIN", "PLAYER_ENTERING_WORLD" }) do
+        pcall(frame.RegisterEvent, frame, event)
+    end
 end
 
 frame:SetScript("OnEvent", function(_, event, ...)
@@ -1079,6 +1152,11 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_REGEN_ENABLED" then
         wipe(levelCache)
         SetupKeyHook() -- if the login happened in combat
+        if not CombatLogGetCurrentEventInfo then ScheduleWorldKB() end -- a kill worth no honor
+    elseif event == "PLAYER_PVP_KILLS_CHANGED" or event == "CHAT_MSG_COMBAT_HONOR_GAIN" then
+        ScheduleWorldKB()
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        BaselineWorldKB()
     elseif event == "CHAT_MSG_CHANNEL" then
         -- without a guild: "WOS:..." lines on the code channel (see QueueChat)
         local text, sender, _, channelString, _, _, _, _, baseName = ...
@@ -1534,10 +1612,12 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         Debug()
     elseif msg == "flush" then
         ReloadUI() -- WoW only writes SavedVariables on reload or logout
-    elseif msg == "striptest" or msg == "striptest level" or msg == "striptest duel" then
+    elseif msg == "striptest" or msg == "striptest level" or msg == "striptest duel" or msg == "striptest kill" then
         local level, zone, classFile = MyStatus()
         if msg == "striptest duel" then
             ns.ShowStrip(ScorePayload("test:" .. time(), "W", { "Test Dummy", zone }))
+        elseif msg == "striptest kill" then
+            ns.ShowStrip(ScorePayload("test:" .. time(), "K", { "Test Dummy", "-1", "WARRIOR", zone }))
         elseif msg == "striptest level" then
             ns.ShowStrip(LevelPayload("test:" .. time(), level, true))
         else

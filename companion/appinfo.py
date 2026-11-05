@@ -2,5 +2,5 @@
 
 APP = "WallOfShameCompanion"
 NAME = "Wall of Shame Forever companion"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 BUNDLE_ID = "com.wallofshame.companion"  # macOS app and login item
