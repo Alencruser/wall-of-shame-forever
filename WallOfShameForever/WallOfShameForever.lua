@@ -936,6 +936,114 @@ local function DeadEnemyInView()
     end
 end
 
+-- No dead enemy in view: the game's own Combat Log chat tab still shows readable lines, English
+-- or French client ("Your Melee hit Dot Logistics 90 Physical." / "votre Coup touche X 109
+-- (Physique).", "Vous tue X.", "You have been awarded 8 Honor."). The victim, newest first:
+--   1. our kill line ("Vous tue X."), unless X gave experience (a monster);
+--   2. else the last one we hit before the latest honor line.
+-- Lines older than the honor line before that belong to an earlier kill: never used.
+local LOG_SCAN = 80 -- lines
+local LOG_REFILL = 1 -- seconds for the game to fill the tab again (C_CombatLog.RefilterEntries)
+
+local function PlainText(text)
+    return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h%[?(.-)%]?|h", "%1"))
+end
+
+local function Words(...) -- a game text may be missing (nil): no ipairs
+    local out, seen = {}, {}
+    for i = 1, select("#", ...) do
+        local w = select(i, ...)
+        if type(w) == "string" and w ~= "" and not seen[w:lower()] then
+            seen[w:lower()] = true
+            out[#out + 1] = w:lower()
+        end
+    end
+    return out
+end
+
+local logWords
+local function LogWords()
+    if not logWords then
+        logWords = {
+            you = Words("you", "vous", UNIT_YOU_SOURCE),
+            your = Words("your", "votre", "vos", UNIT_YOU_SOURCE_POSSESSIVE),
+            kill = Words(ACTION_PARTY_KILL, "kill", "kills", "killed", "have slain", "tue", "avez tué"),
+            hit = Words(ACTION_SWING_DAMAGE, ACTION_SPELL_DAMAGE, ACTION_RANGE_DAMAGE, ACTION_SPELL_PERIODIC_DAMAGE,
+                "hit", "hits", "crit", "crits", "touche", "inflige des dégâts"),
+        }
+    end
+    return logWords
+end
+
+-- "rest" after "<first word> " when the line starts with one of words (any case)
+local function After(text, words)
+    local lower = text:lower()
+    for _, w in ipairs(words) do
+        if lower:sub(1, #w + 1) == w .. " " then return text:sub(#w + 2) end
+    end
+end
+
+local function KillLine(text)
+    local rest = After(text, LogWords().you)
+    if not rest then return nil end
+    local lower = rest:lower()
+    for _, w in ipairs(LogWords().kill) do
+        if lower:sub(1, #w + 1) == w .. " " then
+            local name = rest:sub(#w + 2):match("^(.-)%s*[%.!]?$")
+            if name and name ~= "" then return name end
+        end
+    end
+end
+
+local function HitLine(text)
+    local rest = After(text, LogWords().your)
+    if not rest then return nil end
+    local lower = rest:lower()
+    for _, w in ipairs(LogWords().hit) do
+        local s, e = lower:find(" " .. w .. " ", 1, true)
+        if s then
+            local name = rest:sub(e + 1):match("^(.-) %d")
+            if name and name ~= "" then return name end
+        end
+    end
+end
+
+local function MonsterLine(text) -- "X dies, you gain 165 experience." / "X meurt, vous gagnez 165 points d'expérience."
+    return text:match("^(.-) dies, you gain %d") or text:match("^(.-) meurt, vous gagnez %d")
+end
+
+local function HonorLine(text)
+    local lower = text:lower()
+    return (lower:find("%d+ honor") or lower:find("%d+ points? d.honneur")) ~= nil
+end
+
+local function VictimFromCombatLog()
+    local f = COMBATLOG or ChatFrame2
+    if type(f) ~= "table" or not (f.GetNumMessages and f.GetMessageInfo) then return nil end
+    local okN, n = pcall(f.GetNumMessages, f)
+    if not okN or type(n) ~= "number" then return nil end
+    local honors, monsters, hit = 0, {}, nil
+    for i = n, math.max(1, n - LOG_SCAN), -1 do
+        local ok, text = pcall(f.GetMessageInfo, f, i)
+        if ok and type(text) == "string" and not Secret(text) then
+            text = PlainText(text)
+            local monster, killed = MonsterLine(text), KillLine(text)
+            if HonorLine(text) then
+                honors = honors + 1
+                if honors > 1 then break end -- the kill before
+            elseif monster then
+                monsters[monster] = true
+            elseif killed then
+                if not monsters[killed] then return killed end
+            elseif honors == 1 and not hit then
+                local target = HitLine(text)
+                if target and not monsters[target] then hit = target end
+            end
+        end
+    end
+    return hit
+end
+
 local ScheduleWorldKB
 
 local function Step(now, last)
@@ -966,17 +1074,28 @@ local function CheckWorldKB()
     -- dead, or just died: whatever moved is not our killing blow
     local okDead, dead = pcall(UnitIsDeadOrGhost, "player")
     if (okDead and dead == true) or (lastOwnDeath and GetTime() - lastOwnDeath < KB_DEATH_QUIET) then return end
-    local victim, level, class = DeadEnemyInView()
-    local payload
-    for i = 1, gained do
-        local known = i == gained and victim -- several at once: the one in view is the last
-        payload = QueueScore("K", { known and ShortName(victim) or "?", known and level and tostring(level) or "",
-            known and class or "", GetRealZoneText() or "" })
-        AddLog(L("log_killing_blow", known and ShortName(victim) or "?"))
+    local zone = GetRealZoneText() or ""
+    local function Post(victim, level, class)
+        local payload
+        for i = 1, gained do
+            local known = i == gained and victim -- several at once: the one found is the last
+            payload = QueueScore("K", { known and ShortName(victim) or "?", known and level and tostring(level) or "",
+                known and class or "", zone })
+            AddLog(L("log_killing_blow", known and ShortName(victim) or "?"))
+        end
+        -- the last one on the strip: posted right away with a screenshot of the killer's screen
+        -- (the others reach the bot with the SavedVariables)
+        if payload then ns.ShowStrip(payload) end
     end
-    -- the last one on the strip: posted right away with a screenshot of the killer's screen
-    -- (the others reach the bot with the SavedVariables)
-    if payload then ns.ShowStrip(payload) end
+    local victim, level, class = DeadEnemyInView()
+    if victim then return Post(victim, level, class) end
+    -- the Combat Log tab only fills up when shown: ask the game to fill it, then read it
+    local refilter = type(C_CombatLog) == "table" and C_CombatLog.RefilterEntries
+    if type(refilter) == "function" and pcall(refilter) then
+        C_Timer.After(LOG_REFILL, function() Post(VictimFromCombatLog()) end)
+    else
+        Post(VictimFromCombatLog())
+    end
 end
 
 function ScheduleWorldKB()

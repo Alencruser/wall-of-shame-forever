@@ -1,5 +1,14 @@
 # Wall of Shame Forever
 
+## v0.4.2 (2026-11-07)
+
+- WoW Forever: the victim of a killing blow is named on Discord. With no dead enemy in
+  view, the addon reads the game's Combat Log chat tab (refilled at the kill): your kill line
+  ("You have slain X!" / "Vous tue X."), monsters left out, or else the last player you hit before
+  the honor line. English and French clients; otherwise the victim stays on the screenshot
+- In a guild, the companion code is pasted by hand into the guild information (WoW Forever does
+  not let addons write there): see the CurseForge page
+
 ## v0.4.1 (2026-11-06)
 
 - WoW Forever: monsters no longer posted as killing blows. On this client the game's statistic

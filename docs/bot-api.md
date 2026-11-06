@@ -6,9 +6,9 @@ game through the addon and never report it.
 ## Connection code
 
 The bot address is **not** in the public code. The bot gives a connection code to officers on
-Discord (admin-only command, e.g. `/shamewall code`); one officer types `/wos code <code>` in
-game, the addon stores it in the guild information, and every member's companion gets it from
-there. Players configure nothing.
+Discord (admin-only command, e.g. `/shamewall code`), or they build it by hand (format below);
+one officer pastes it into the guild information (WoW Forever does not let addons write there),
+and every member's addon and companion get it from there. Players configure nothing.
 
 ```
 "swf1." + base64url(JSON {"url": "<https endpoint>", "key": "<guild key>"}), no padding

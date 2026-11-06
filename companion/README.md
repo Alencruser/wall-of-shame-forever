@@ -16,15 +16,14 @@ A death is never sent twice (event id).
 
 Players have nothing to configure: install the addon, start the companion.
 
-- **Officers, once per guild**: type `/wos code <code from the bot>` in game. The addon writes
-  the code into the guild information (only ranks allowed to edit it can do this). Every
-  member's addon reads it there, including members who join or log in later, and the
-  companion picks it up from the addon's SavedVariables (written on `/reload` or logout).
-  Until then, deaths wait in the companion and are sent as soon as the code shows up.
-  The guild information stays free for real news: the addon adds one line
-  `Code companion: swf1....` (about 140 of the 500 characters) and later only replaces the
-  code inside it. Officers can edit the rest freely; if the line is deleted, members keep
-  the last code they saw.
+- **Officers, once per guild**: paste the code from the bot (`/shamewall code`) into the guild
+  information (Guild > Guild Info; only ranks allowed to edit it can do this). WoW Forever
+  does not let addons write there, so `/wos code` cannot do it in a guild. Every member's
+  addon reads it there, including members who join or log in later, and the companion picks
+  it up from the addon's SavedVariables (written on `/reload` or logout). Until then, deaths
+  wait in the companion and are sent as soon as the code shows up. The code takes about 140
+  of the 500 characters, for example on a line `Code companion: swf1....`; the rest of the
+  text stays free for real news. If the code is deleted, members keep the last one they saw.
 - **Before the guild exists** (server launch): each player types `/wos code <code from the
   bot>` once in game, then `/reload`. Everyone with the same code shares deaths in game
   through a hidden private channel (name and password derived from the code), and the
