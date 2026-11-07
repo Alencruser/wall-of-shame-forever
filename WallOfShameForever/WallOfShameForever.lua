@@ -60,6 +60,11 @@ local function Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cffc9a227Wall of Shame|r: " .. msg)
 end
 
+-- Values the game hides from addons (some chat text in combat): never read, compared or indexed
+local function Secret(v)
+    return issecretvalue and issecretvalue(v)
+end
+
 -- One key per player. Forever has first and last names: the game writes "Chamy Chan" in chat and
 -- in system messages, but "Chamy-Chan" elsewhere, so a dash left after removing our realm is a space.
 local function ShortName(name)
@@ -830,7 +835,8 @@ local function OnDuelLost(winner)
 end
 
 local function OnSystemMessage(msg)
-    local winner, loser = DuelResult(msg or "")
+    if type(msg) ~= "string" or Secret(msg) then return end -- hidden in combat; duels end out of it
+    local winner, loser = DuelResult(msg)
     if not winner then return end
     if ShortName(loser) == ShortName(playerName) and IsGuildmate(winner) then
         OnDuelLost(winner)
@@ -871,10 +877,6 @@ local KB_PAIR_TIME = 4 -- seconds: one counter may move a little after the other
 local KB_DEATH_QUIET = 30 -- seconds after our own death: nothing counted (see CheckWorldKB)
 local lastWorldKB, lastHonorKills, kbCheckPending, kbRetried, lastOwnDeath, honorStatId
 local kbCredit, hkCredit, creditAt = 0, 0, 0
-
-local function Secret(v)
-    return issecretvalue and issecretvalue(v)
-end
 
 local function Count(value)
     if value == nil or Secret(value) then return nil end
@@ -1350,7 +1352,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "CHAT_MSG_CHANNEL" then
         -- without a guild: "WOS:..." lines on the code channel (see QueueChat)
         local text, sender, _, channelString, _, _, _, _, baseName = ...
-        if not (channelName and not IsInGuild() and type(text) == "string"
+        if not (channelName and not IsInGuild() and type(text) == "string" and not Secret(text)
             and text:sub(1, #CHAT_TAG) == CHAT_TAG) then return end
         local from = tostring(baseName or "") .. " " .. tostring(channelString or "")
         if not from:lower():find(channelName:lower(), 1, true) then return end

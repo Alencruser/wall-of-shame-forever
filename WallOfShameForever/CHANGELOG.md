@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.4.3 (2026-11-07)
+
+- Fixed a Lua error in combat ("attempt to index local 'msg' (a secret string value)"): the game
+  hides some chat text from addons during a fight, the addon now skips it
+
 ## v0.4.2 (2026-11-07)
 
 - WoW Forever: the victim of a killing blow is named on Discord. With no dead enemy in
