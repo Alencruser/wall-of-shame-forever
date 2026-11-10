@@ -246,8 +246,9 @@ def needs_install():
     return FROZEN and os.path.normcase(os.path.abspath(sys.executable)) != os.path.normcase(INSTALLED_EXE)
 
 
-def install():
-    """Copy to the install folder, register, start the installed copy."""
+def install(quiet=False):
+    """Copy to the install folder, register, start the installed copy. quiet: an update from the
+    menu (updater.py), no message box."""
     updating = os.path.exists(INSTALLED_EXE)
     if not stop_running_instance():
         message("The companion is still running and could not be stopped. Quit it from its icon "
@@ -267,6 +268,8 @@ def install():
     if not updating:
         set_startup(True)
     subprocess.Popen([INSTALLED_EXE], cwd=INSTALL_DIR, creationflags=DETACHED_PROCESS, close_fds=True)
+    if quiet:
+        return
     message(("Updated." if updating else "Installed.") + "\n\n"
             "The companion runs in the background: its icon is near the clock (click ^ if hidden). "
             "It starts with Windows.\n\nYou can delete this downloaded file. To uninstall: "

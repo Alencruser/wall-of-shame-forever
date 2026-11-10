@@ -238,8 +238,9 @@ def needs_install():
     return FROZEN and os.path.realpath(_bundle()) != os.path.realpath(INSTALLED_APP)
 
 
-def install():
-    """Copy the .app to ~/Applications, open at login, start the installed copy."""
+def install(quiet=False):
+    """Copy the .app to ~/Applications, open at login, start the installed copy. quiet: an
+    update from the menu (updater.py), no message box."""
     updating = os.path.exists(INSTALLED_APP)
     if not stop_running_instance():
         message("The companion is still running and could not be stopped. Quit it from its icon in "
@@ -258,6 +259,8 @@ def install():
     if not updating:
         set_startup(True)
     subprocess.Popen(["open", INSTALLED_APP])
+    if quiet:
+        return
     message(("Updated." if updating else "Installed.") + "\n\n"
             "The companion runs in the background: its icon is in the menu bar, at the top right. "
             "It opens at login.\n\nmacOS will ask for the Screen Recording permission: it is needed "

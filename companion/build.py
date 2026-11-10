@@ -66,8 +66,17 @@ plist.update({
 })
 with open(info, "wb") as f:
     plistlib.dump(plist, f)
-# Info.plist changed: sign again (ad hoc, no Apple certificate), else Apple Silicon calls it damaged
-subprocess.run(["codesign", "--force", "--deep", "--sign", "-", bundle], check=True)
+# Info.plist changed: sign again, else Apple Silicon calls it damaged. With the project's own
+# certificate (MACOS_SIGN_IDENTITY, set by the workflow from the repository's secrets), macOS
+# recognizes the app across updates by that certificate and keeps its Screen Recording permission;
+# without it (local build), ad hoc: a new app for macOS at every build.
+identity = os.environ.get("MACOS_SIGN_IDENTITY") or "-"
+subprocess.run(["codesign", "--force", "--deep", "--sign", identity, bundle], check=True)
+if identity != "-":
+    requirement = subprocess.run(["codesign", "-d", "-r-", bundle], capture_output=True, text=True)
+    print(requirement.stdout + requirement.stderr)
+    if "certificate leaf" not in requirement.stdout + requirement.stderr:
+        sys.exit("signed, but the requirement does not name the certificate: macOS would not keep the permission")
 # A .app is a folder: it is shared as a disk image (.dmg), opened with a double click. It only
 # holds the app, which copies itself to ~/Applications on first launch (platform_mac.install).
 # Apple Silicon: WallOfShameCompanion.dmg; Intel Mac: WallOfShameCompanion-Intel.dmg

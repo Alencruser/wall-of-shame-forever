@@ -32,10 +32,52 @@ jobs:
         with:
           python-version: "3.12"
           architecture: ${{ matrix.arch }}
+      # the installed companions update themselves when the tag is newer than their appinfo.VERSION:
+      # a tag that differs from appinfo.VERSION would offer the same update again and again
+      - name: Tag matches appinfo.VERSION
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+        shell: bash
+        run: |
+          version=$(python -c "from appinfo import VERSION; print(VERSION)")
+          if [ "${GITHUB_REF_NAME}" != "companion-v${version}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} but appinfo.VERSION is ${version}: bump companion/appinfo.py"
+            exit 1
+          fi
       - name: Install
         run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: Tests
         run: python -m unittest discover -s tests
+      # macOS: the project's self-signed certificate (secrets MACOS_CERT_P12 in base64 and
+      # MACOS_CERT_PASSWORD), so macOS keeps the Screen Recording permission across updates.
+      # Required for a release; a manual run without the secrets builds ad hoc.
+      - name: Signing certificate (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/companion-v* ]]; then
+              echo "::error::secret MACOS_CERT_P12 missing: a release must be signed with the project's certificate"
+              exit 1
+            fi
+            echo "no certificate: ad hoc signature"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p ci "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p ci "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          # by its SHA-1: a self-signed certificate is not "valid" for find-identity -v, codesign takes it
+          identity=$(security find-identity -p codesigning "$keychain" | grep -oE '[0-9A-F]{40}' | head -1)
+          if [ -z "$identity" ]; then echo "::error::certificate imported but no signing identity"; exit 1; fi
+          echo "MACOS_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
       - name: Build
         run: python build.py
       - uses: actions/upload-artifact@v4
@@ -64,5 +106,6 @@ jobs:
             - Windows: WallOfShameCompanion.exe
             - macOS Apple Silicon (M1 and later): WallOfShameCompanion.dmg (open it, then open the app)
             - macOS Intel: WallOfShameCompanion-Intel.dmg
-            Not signed: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks
+            First install: Windows shows "Windows protected your PC" (More info > Run anyway); macOS asks
             to confirm in System Settings > Privacy & Security (Open Anyway). See companion/README.md.
+            Already installed (0.5.0 or later): the companion's menu offers the update, one click installs it.

@@ -29,9 +29,10 @@ Players have nothing to configure: install the addon, start the companion.
   through a hidden private channel (name and password derived from the code), and the
   companion gets the code from the SavedVariables as usual. Once in a guild, the addon
   switches back to the guild channel, and the officers' code replaces the personal one.
-- **Leaving the guild** (or being kicked, even while offline) removes the code from the
-  addon. The companion forgets it at the next `/reload` or logout and drops deaths still
-  waiting, so nothing reaches the old guild's bot.
+- **No guild on a character** (a reroll not invited yet, an alt, leaving or being kicked):
+  the code stays (it is saved for the whole WoW account) and that character's events still
+  go to the bot, which accepts events without a guild. To cut someone off, generate a new
+  key (see Changing the key).
 - **Players**: start the companion. The WoW folder is found automatically (see below).
   `/wos striptest` in game checks that the strip is read.
 - `--dry-run` saves events and screenshots to `out/` instead of sending them;
@@ -115,16 +116,17 @@ For every request (full format in [`../docs/bot-api.md`](../docs/bot-api.md)):
 | Check | Reply |
 |---|---|
 | `Authorization: Bearer <key>` is not your guild key | `401`, post nothing |
-| `guild` / `realm` in the `event` field are not your guild | `403`, post nothing |
+| `realm` in the `event` field is not your realm, or `guild` is another guild (an empty `guild` is accepted) | `200`, post nothing |
 | `id` already received (the companion retries after network errors) | `200`, post nothing |
 | `test` is `true` (`/wos striptest`) | `200`, post nothing or post to a test channel |
 | otherwise | post the death to your Discord channel (`screenshot` file when present), `200` |
 
-Any other error code makes the companion retry later (5 s, then up to 5 min).
+A `403` makes the companion drop that one event (the code is still fine). Any other error code
+makes the companion retry later (5 s, then up to 5 min).
 
 ### Changing the key
 
-Someone left the guild with the code? Generate a new key, build the new code, and an officer
+Someone left the guild with the code (leaving does not remove it)? Generate a new key, build the new code, and an officer
 types `/wos code <new code>`: the guild information is updated, old codes get `401`, and
 queued deaths are sent again with the new code.
 
@@ -132,13 +134,20 @@ queued deaths are sent again with the new code.
 
 `WallOfShameCompanion.exe` has no console window, only an icon in the notification area (Bagarre
 Club logo), like the TrollDiscord client. Its menu shows the status (WoW folder found, bot,
-last event sent) and has **Open log**, **Start with Windows** and **Quit**.
+last event sent) and has **Open log**, **Start with Windows**, **Check for updates** and **Quit**.
 
 - **First launch** (from Downloads or anywhere): it copies itself to
   `%LOCALAPPDATA%\WallOfShameCompanion`, starts with Windows (quoted `HKCU\...\Run` entry), adds
   itself to **Settings > Apps > Installed apps** with an Uninstall button, and starts in the
   background. No admin rights. The downloaded file can be deleted.
-- **Update**: launch a newer `.exe` the same way: it stops the running one and replaces it.
+- **Update**: the companion looks for a newer version on GitHub (the `companion-vX.Y.Z`
+  releases) 30 s after it starts, then every 6 hours, or at once with **Check for updates**.
+  Nothing is installed by itself: the menu shows **Update vX.Y.Z available - click to install**
+  (and a notification). One click downloads it to the `update` folder, and the new copy stops
+  the running one, replaces it and starts (no message box). Failures go to the log and leave the
+  companion as it is. Versions up to 0.4.0 have no updater: update them once by hand, by
+  launching a newer `.exe` the same way as the first time (it stops the running one and replaces
+  it; this still works as a fallback).
 - **Uninstall**: from Windows Settings (or `WallOfShameCompanion.exe --uninstall`): stops it,
   removes the startup entry and the folder (settings, log, state).
 - One instance at a time. `config.toml`, `state.json` and `log.txt` live in the install folder.
@@ -167,8 +176,14 @@ and `WallOfShameCompanion-Intel.dmg` for Intel Macs.
 - **Screen Recording permission**: macOS asks for it on first launch. Allow the companion in
   **System Settings > Privacy & Security > Screen Recording**, then quit it from its menu and
   reopen it (`~/Applications/WallOfShameCompanion.app`). Without it, events still go to Discord on
-  `/reload` or logout, but without screenshots; the menu shows **Allow screen recording…**. After
-  an update, macOS may ask again.
+  `/reload` or logout, but without screenshots; the menu shows **Allow screen recording…**. From
+  0.5.0 the app is signed with the project's own certificate (same one at every release), so macOS
+  keeps the permission across updates; it asks one last time when moving from 0.4.0 or older.
+- **Update**: same as on Windows (menu bar icon > **Check for updates**, then **Update vX.Y.Z
+  available - click to install**). The companion downloads the `.dmg` for its Mac (Apple Silicon
+  or Intel), copies the app out of it, and the new copy replaces `~/Applications/WallOfShameCompanion.app`
+  and starts. No Gatekeeper confirmation for an update (only the first download needs one).
+  Versions up to 0.4.0: update once by hand (open the new `.dmg`, then the app inside).
 - **Uninstall**: menu bar icon > **Uninstall…** (removes the app, the login item and
   `~/Library/Application Support/WallOfShameCompanion`).
 - The WoW window must be the active one, windowed or fullscreen. The strip is searched around
@@ -176,9 +191,15 @@ and `WallOfShameCompanion-Intel.dmg` for Intel Macs.
   the strip at the bottom or in the middle of an edge, the title bar stays in the screenshot.
 
 The `.app` can only be built on a Mac: the GitHub Actions workflow `companion` builds it (and the
-Windows `.exe`) on GitHub's machines. For players, push a tag `companion-v0.2.0`: the `.exe` and
-the `.dmg` are published as they are in a GitHub Release. Actions tab > **companion** > **Run
-workflow** is for tests: GitHub zips the files of a run (unzip twice on a Mac). On a
+Windows `.exe`) on GitHub's machines. For players, bump `VERSION` in `appinfo.py`, then push a
+tag `companion-v` + that version (e.g. `companion-v0.5.0`; the workflow stops if they differ):
+the `.exe` and the `.dmg` are published as they are in a GitHub Release, and the installed
+companions offer the update. Draft and prerelease releases are never offered. Actions tab > **companion** > **Run
+workflow** is for tests: GitHub zips the files of a run (unzip twice on a Mac). The Mac builds
+are signed with the project's self-signed certificate, from the repository secrets
+`MACOS_CERT_P12` (the `.p12` file in base64) and `MACOS_CERT_PASSWORD`: a release without them
+stops. Always the same certificate (keep the `.p12` safe): a new one makes every Mac player allow
+Screen Recording again. A local build is signed ad hoc. On a
 Mac: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 && .venv/bin/python build.py`.
 
