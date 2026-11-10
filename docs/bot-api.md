@@ -17,10 +17,10 @@ and every member's addon and companion get it from there. Players configure noth
 See `companion/connection.py` (`encode` builds one). The bot only serves its own guild:
 
 - it accepts only the current guild key, and rejects everything else with `401`
-- it checks that `guild` (and `realm`) in the event match the configured guild. Before the
-  guild exists, players paste the code themselves and send `guild: ""`: accept those while
-  no guild is configured on the bot side, and reject them once it is
-- regenerating the key on Discord cuts off old codes (someone who left the guild)
+- the key is the authority: it accepts events with an empty `guild` (before the guild exists,
+  a reroll not invited yet, an alt: the code is saved for the whole WoW account). Events of
+  another guild or another realm are ignored with `200`, never refused
+- regenerating the key on Discord cuts off old codes (someone who left the guild keeps the code)
 
 ## Request
 
@@ -100,8 +100,10 @@ Level event, sent at login and on every level-up. A level-up also goes through t
 
 - `2xx`: received (also for an `id` already received: the companion retries after network
   errors, so the bot must **ignore an `id` it already has** and still answer 200)
-- `401`/`403`: bad key or other guild; the companion tells the player to ask for the current
-  code. Any other error: the companion retries with backoff (5 s up to 5 min)
+- `401`: bad key; the companion tells the player to ask for the current code and retries
+  in an hour or as soon as the code changes
+- `403`: the bot refuses this one event; the companion drops it, the code is still fine.
+  Any other error: the companion retries with backoff (5 s up to 5 min)
 
 ## Suggested Discord embed
 

@@ -10,7 +10,6 @@ import glob
 import io
 import json
 import os
-import re
 import sys
 import threading
 import time
@@ -106,6 +105,10 @@ class Refused(Exception):
     pass
 
 
+class Rejected(Exception):
+    """403: the code is good, the bot does not want this one event (older bots: another guild)."""
+
+
 class Sender:
     """Posts events to the bot, retrying failures; in dry run, saves them to ./out.
 
@@ -177,6 +180,10 @@ class Sender:
                 STATUS["bot"] = "code refused, ask an officer"
                 log("the bot refused the guild's connection code: officers must put the current "
                     "one in the guild information")
+            except Rejected:  # never accepted: not kept, the code itself is fine
+                self.queue.remove(item)
+                log(f"the bot rejected {ev.get('type', 'death')} {ev['id']} (guild "
+                    f"\"{ev.get('guild', '')}\"): not sent")
             except Exception as e:  # network, HTTP error: retry later
                 item[2], item[3] = now + delay, min(delay * 2, 300)
                 log(f"send failed for {ev['id']}, retry in {delay}s: {e}")
@@ -194,8 +201,10 @@ class Sender:
         files = {"screenshot": ("death.jpg", jpeg, "image/jpeg")} if jpeg else None
         r = requests.post(self.url, headers={"Authorization": f"Bearer {self.key}"},
                           data={"event": json.dumps(ev, ensure_ascii=False)}, files=files, timeout=15)
-        if r.status_code in (401, 403):
+        if r.status_code == 401:
             raise Refused()
+        if r.status_code == 403:
+            raise Rejected()
         r.raise_for_status()
 
 
@@ -297,14 +306,12 @@ def check_outbox(paths, mtimes, state, sender):
             sender.push(ev, None)
 
 
-CODE_REMOVED_RE = re.compile(r'\["codeRemoved"\]\s*=\s*true')
 DB_START = "WallOfShameForeverDB = {"
 
 
 def write_builtin_code(game_dirs):
     """Private build: gives the built-in code to the addon, so players type nothing in game.
-    Only while WoW is closed (WoW rewrites the file on logout), never over an existing code,
-    never after the player left the guild (codeRemoved, set by the addon)."""
+    Only while WoW is closed (WoW rewrites the file on logout), never over an existing code."""
     if not BUILTIN_CODE or wowpath.wow_running():
         return
     for game_dir in game_dirs:
@@ -317,7 +324,7 @@ def write_builtin_code(game_dirs):
                 if os.path.exists(path):
                     with open(path, encoding="utf-8", errors="replace") as f:
                         text = f.read()
-                    if '["connection"]' in text or CODE_REMOVED_RE.search(text) or DB_START not in text:
+                    if '["connection"]' in text or DB_START not in text:
                         continue
                     text = text.replace(DB_START, f"{DB_START}\n{entry}", 1)
                 else:

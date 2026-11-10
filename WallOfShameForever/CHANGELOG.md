@@ -1,5 +1,15 @@
 # Wall of Shame Forever
 
+## v0.4.4 (2026-11-10)
+
+- The Discord code is no longer removed when a character has no guild: the addon's settings are
+  shared by every character of the account, so a reroll or an alt not yet in the guild used to remove
+  the code for all of them. The code stays (a code in the guild information still replaces it), and
+  a guildless character's events still go to the bot
+- The level waiting for the companion is rewritten with the current guild (a reroll invited after
+  its level was queued)
+- `/wos striptest` is open to every player (the bot no longer keeps tests for its admins)
+
 ## v0.4.3 (2026-11-07)
 
 - Fixed a Lua error in combat ("attempt to index local 'msg' (a secret string value)"): the game

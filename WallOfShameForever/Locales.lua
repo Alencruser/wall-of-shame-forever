@@ -101,7 +101,6 @@ ns.LOCALES.en = {
     recent_events = "Recent events:",
     nothing_yet = "(nothing yet)",
     sync_requested = "Requested the current state from the guild.",
-    left_guild_code = "You left your guild: its Discord code was removed.",
     discord_ready = "Discord deaths are set up for your guild.",
     discord_not_set = "Not set up for your guild yet: an officer types /wos code <code from the bot>.",
     code_invalid = "This is not a valid code: copy it again from the bot on Discord.",
@@ -110,7 +109,7 @@ ns.LOCALES.en = {
     code_no_rights = "Only members allowed to edit the guild information can set the code.",
     guild_info_too_long = "The guild information is too long: shorten it, then try again.",
     code_saved_guild = "Code saved in the guild information: every member gets it automatically.",
-    strip_test = "Test strip shown for 3 seconds: the bot posts a TEST card (bot admins only), deleted after a minute.",
+    strip_test = "Test strip shown for 3 seconds: the bot posts a TEST card, deleted after a minute.",
     commands = "Commands:",
     help = {
         "/wos - open/close the guild roster",
@@ -129,10 +128,10 @@ ns.LOCALES.en = {
         "/wos discord - toggle sending own deaths to Discord (on by default)",
         "/wos code <code> - officers: set the Discord bot's code for the whole guild",
         "/wos flush - reload the UI so the companion gets pending deaths",
-        "/wos striptest - send a test death through the companion (bot admins only)",
-        "/wos striptest level - send a test level-up through the companion (bot admins only)",
-        "/wos striptest duel - send a test duel win through the companion (bot admins only)",
-        "/wos striptest kill - send a test killing blow through the companion (bot admins only)",
+        "/wos striptest - send a test death through the companion",
+        "/wos striptest level - send a test level-up through the companion",
+        "/wos striptest duel - send a test duel win through the companion",
+        "/wos striptest kill - send a test killing blow through the companion",
     },
 
     -- classes
@@ -259,7 +258,6 @@ ns.LOCALES.fr = {
     recent_events = "Derniers événements :",
     nothing_yet = "(rien pour l'instant)",
     sync_requested = "État actuel demandé à la guilde.",
-    left_guild_code = "Tu as quitté ta guilde : son code Discord a été retiré.",
     discord_ready = "Les morts sur Discord sont configurées pour ta guilde.",
     discord_not_set = "Pas encore configuré pour ta guilde : un officier tape /wos code <code du bot>.",
     code_invalid = "Ce code n'est pas valide : recopie-le depuis le bot sur Discord.",
@@ -268,7 +266,7 @@ ns.LOCALES.fr = {
     code_no_rights = "Seuls les membres qui peuvent modifier les informations de guilde peuvent définir le code.",
     guild_info_too_long = "Les informations de guilde sont trop longues : raccourcis-les, puis réessaie.",
     code_saved_guild = "Code enregistré dans les informations de guilde : chaque membre le reçoit automatiquement.",
-    strip_test = "Bande de test affichée 3 secondes : le bot poste une carte TEST (admins du bot seulement), supprimée après une minute.",
+    strip_test = "Bande de test affichée 3 secondes : le bot poste une carte TEST, supprimée après une minute.",
     commands = "Commandes :",
     help = {
         "/wos - ouvrir/fermer la liste de la guilde",
@@ -287,10 +285,10 @@ ns.LOCALES.fr = {
         "/wos discord - activer/désactiver l'envoi de tes morts sur Discord (activé par défaut)",
         "/wos code <code> - officiers : définir le code du bot Discord pour toute la guilde",
         "/wos flush - recharger l'interface pour que le companion récupère les morts en attente",
-        "/wos striptest - envoyer une mort de test via le companion (admins du bot seulement)",
-        "/wos striptest level - envoyer un level-up de test via le companion (admins du bot seulement)",
-        "/wos striptest duel - envoyer un duel gagné de test via le companion (admins du bot seulement)",
-        "/wos striptest kill - envoyer un coup fatal de test via le companion (admins du bot seulement)",
+        "/wos striptest - envoyer une mort de test via le companion",
+        "/wos striptest level - envoyer un level-up de test via le companion",
+        "/wos striptest duel - envoyer un duel gagné de test via le companion",
+        "/wos striptest kill - envoyer un coup fatal de test via le companion",
     },
 
     -- classes

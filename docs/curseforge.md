@@ -51,7 +51,7 @@ With your guild's Discord bot and the companion program (Windows and macOS):
 - a **ranking**: duels won against guildmates and killing blows on players of the other faction
 - your **level per class** for the bot's member directory
 
-Officers set it up once by pasting the bot's code into the guild information (see Getting started). Players have nothing to configure. Leaving the guild removes the code.
+Officers set it up once by pasting the bot's code into the guild information (see Getting started). Players have nothing to configure. The code is kept by all your characters, even a new one not yet in the guild.
 
 Privacy: only **your own** events are sent, to **your guild's** bot, with your character name, level, class, zone and Battle.net battletag (so the bot can find your Discord account). Nothing is sent without the companion program and a code from your guild.
 

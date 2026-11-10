@@ -370,8 +370,8 @@ local function UpdateChannel()
     end
 end
 
--- Left the guild (also kicked while offline): the code goes away with it,
--- so the player no longer reaches the guild's bot
+-- No guild on this character (left, kicked, or a reroll not invited yet): the code stays, it is
+-- the bot's and shared by the whole account; the code channel replaces the guild channel
 local function CheckGuildLeft()
     if IsInGuild() then
         db.guildName = GetGuildInfo("player") or db.guildName or ""
@@ -381,12 +381,6 @@ local function CheckGuildLeft()
     C_Timer.After(10, function() -- guild data can arrive late right after login
         if IsInGuild() or not db.guildName then return end
         db.guildName = nil
-        if db.connection then
-            -- codeRemoved: a private companion build must never put its built-in code back
-            -- (write_builtin_code in companion/wallofshame_companion.py)
-            db.connection, db.codeRemoved = nil, true
-            Print(L("left_guild_code"))
-        end
         UpdateChannel()
     end)
 end
@@ -717,16 +711,21 @@ end
 
 -- Current level for the bot, which keeps the highest level per class (battletag directory,
 -- /activite) and posts real level-ups (up). Only the latest level of this character stays in
--- the outbox; the login snapshot never replaces a level-up of the same level.
+-- the outbox, rewritten each time so its guild is the current one (a reroll invited after its
+-- level was queued); the login snapshot never turns a level-up of the same level into a plain one.
 local function QueueLevel(level, up)
     if not (db.discord and db.connection) then return end
     local name, realm = Identity()
     local prefix = name .. "-" .. realm .. ":L"
+    local wasUp = false
     for i = #db.outbox, 1, -1 do
         local id = OutboxId(db.outbox[i])
-        if id:sub(1, #prefix) == prefix and id ~= prefix .. level then table.remove(db.outbox, i) end
+        if id:sub(1, #prefix) == prefix then
+            if id == prefix .. level then wasUp = select(11, strsplit("|", db.outbox[i])) == "1" end
+            table.remove(db.outbox, i)
+        end
     end
-    local payload = LevelPayload(prefix .. level, level, up)
+    local payload = LevelPayload(prefix .. level, level, up or wasUp)
     AddToOutbox(payload)
     if up then ns.ShowStrip(payload) end -- posted right away, like a death
 end
@@ -1139,7 +1138,7 @@ local function ReadConnection()
     local code = GetGuildInfoText and (GetGuildInfoText() or ""):match(CODE_PATTERN)
     if code and code ~= db.connection then
         local first = db.connection == nil
-        db.connection, db.codeRemoved = code, nil
+        db.connection = code
         if first and db.discord then Print(L("discord_ready")) end
         QueueLevel(UnitLevel("player"))
     end
@@ -1291,10 +1290,11 @@ frame:SetScript("OnEvent", function(_, event, ...)
             db.members[key] = nil
         end
         -- Private build for a guild (PrivateCode.lua, not in the public addon): as if the player
-        -- had typed /wos code. Never after leaving a guild (codeRemoved), and the officers' code
-        -- in the guild information still takes over (ReadConnection).
+        -- had typed /wos code. The officers' code in the guild information still takes over
+        -- (ReadConnection).
+        db.codeRemoved = nil -- set by older versions, which removed the code when leaving a guild
         local builtin = ns.BUILTIN_CODE
-        if not db.connection and not db.codeRemoved and type(builtin) == "string"
+        if not db.connection and type(builtin) == "string"
             and builtin:match("^" .. CODE_PATTERN .. "$") then
             db.connection = builtin
         end
@@ -1707,7 +1707,7 @@ local function SetConnection(code)
     end
     if not IsInGuild() then
         -- no guild yet: personal code, replaced by the guild's one once the guild exists
-        db.connection, db.guildName, db.codeRemoved = code, nil, nil
+        db.connection, db.guildName = code, nil
         UpdateChannel()
         QueueLevel(UnitLevel("player"))
         Print(L("code_saved_solo"))
@@ -1729,7 +1729,7 @@ local function SetConnection(code)
         return
     end
     SetGuildInfoText(newInfo)
-    db.connection, db.codeRemoved = code, nil
+    db.connection = code
     Print(L("code_saved_guild"))
 end
 
