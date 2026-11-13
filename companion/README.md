@@ -191,7 +191,10 @@ and `WallOfShameCompanion-Intel.dmg` for Intel Macs.
   the strip at the bottom or in the middle of an edge, the title bar stays in the screenshot.
 
 The `.app` can only be built on a Mac: the GitHub Actions workflow `companion` builds it (and the
-Windows `.exe`) on GitHub's machines. For players, bump `VERSION` in `appinfo.py`, then push a
+Windows `.exe`) on GitHub's machines. For players, bump `VERSION` in `appinfo.py`, write the
+entry of `docs/annonces.md` before publishing (heading `## Compagnon X.Y.Z`, or
+`## Addon vX.Y.Z + Compagnon X.Y.Z`: the Discord announcement; the workflow stops without it),
+commit and push main, then push a
 tag `companion-v` + that version (e.g. `companion-v0.5.0`; the workflow stops if they differ):
 the `.exe` and the `.dmg` are published as they are in a GitHub Release, and the installed
 companions offer the update. Draft and prerelease releases are never offered. Actions tab > **companion** > **Run

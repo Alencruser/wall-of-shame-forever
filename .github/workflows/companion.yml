@@ -43,6 +43,18 @@ jobs:
             echo "::error::tag ${GITHUB_REF_NAME} but appinfo.VERSION is ${version}: bump companion/appinfo.py"
             exit 1
           fi
+      # the Discord announcement: an entry "## Compagnon X.Y.Z" (or "## Addon vX.Y.Z + Compagnon X.Y.Z")
+      # in docs/annonces.md, written and pushed before the tag (same rule as release.py for the addon)
+      - name: Entry in docs/annonces.md
+        if: startsWith(github.ref, 'refs/tags/companion-v')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#companion-v}"
+          number="${version//./\\.}"
+          if ! grep -iqE "^##[[:space:]].*compagnon[[:space:]]+v?${number}([^0-9.]|\.([^0-9]|$)|$)" ../docs/annonces.md; then
+            echo "::error::docs/annonces.md has no entry for the companion ${version}: add a heading \"## Compagnon ${version}\" (or \"## Addon vX.Y.Z + Compagnon ${version}\"), push main, then tag again"
+            exit 1
+          fi
       - name: Install
         run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: Tests

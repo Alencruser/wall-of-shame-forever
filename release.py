@@ -4,6 +4,12 @@ companion\\.venv\\Scripts\\python release.py                    zip in release/
 companion\\.venv\\Scripts\\python release.py --interface 16002   after a Forever patch (1.60.2)
 companion\\.venv\\Scripts\\python release.py --version v0.1.1    new addon version
 companion\\.venv\\Scripts\\python release.py --upload            zip, then upload to CurseForge
+companion\\.venv\\Scripts\\python release.py --upload --sans-annonce   upload, no Discord announcement
+
+Discord announcement: write the entry of docs/annonces.md before publishing (heading
+"## Addon vX.Y.Z", or "## Addon vX.Y.Z + Compagnon X.Y.Z"), commit and push main, then
+release.py --upload, then the tag. --upload stops when docs/annonces.md has no entry for the
+version; --sans-annonce publishes without one (no announcement).
 
 Upload: the CurseForge project must exist (created once on authors.curseforge.com) and its ID be in
 the .toc (## X-Curse-Project-ID). The API token (authors.curseforge.com > API tokens) comes from the
@@ -22,6 +28,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON = "WallOfShameForever"
 TOC = os.path.join(HERE, ADDON, f"{ADDON}.toc")
 CHANGELOG = os.path.join(HERE, ADDON, "CHANGELOG.md")
+ANNONCES = os.path.join(HERE, "docs", "annonces.md")
 OUT_DIR = os.path.join(HERE, "release")
 API = "https://wow.curseforge.com/api"
 
@@ -71,6 +78,28 @@ def changelog_for(version):
         text = f.read()
     m = re.search(rf"^## {re.escape(version)}\b.*?$(.*?)(?=^## |\Z)", text, re.M | re.S)
     return m.group(1).strip() if m else f"Wall of Shame Forever {version}"
+
+
+def has_announcement(text, kind, version):
+    """True when a "## ..." heading of docs/annonces.md names `kind` ("Addon" or "Compagnon") with
+    this version: "## Addon v0.5.0", "## Addon v0.5.0 + Compagnon 0.6.0". Case-insensitive, the "v"
+    is optional on both sides; 0.5.0 does not match 0.5.01 or 0.5.0.1."""
+    number = re.escape(version.strip().lstrip("vV"))
+    pattern = rf"^##[ \t].*\b{re.escape(kind)}[ \t]+v?{number}(?!\.?\d)"
+    return re.search(pattern, text, re.I | re.M) is not None
+
+
+def check_announcement(version):
+    try:
+        with open(ANNONCES, encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        text = ""
+    if not has_announcement(text, "Addon", version):
+        sys.exit(f"docs/annonces.md has no entry for the addon {version}: add a heading "
+                 f'"## Addon {version}" (or "## Addon {version} + Compagnon X.Y.Z") with the news '
+                 "for players, commit and push main, then run again. To publish without a Discord "
+                 "announcement: --sans-annonce.")
 
 
 def game_version_name(interface):
@@ -136,6 +165,8 @@ def main():
     parser.add_argument("--interface", help="new ## Interface number, e.g. 16002 after the 1.60.2 patch")
     parser.add_argument("--version", help="new ## Version, e.g. v0.1.1")
     parser.add_argument("--upload", action="store_true", help="upload the zip to CurseForge")
+    parser.add_argument("--sans-annonce", action="store_true",
+                        help="upload even without an entry in docs/annonces.md (no Discord announcement)")
     parser.add_argument("--game-version-id", help="CurseForge game version id, when not found by name")
     parser.add_argument("--release-type", default="release", choices=["release", "beta", "alpha"])
     parser.add_argument("--list-versions", action="store_true", help="list CurseForge WoW game versions")
@@ -157,6 +188,8 @@ def main():
     check_files(text)
     version, interface = toc_field(text, "Version"), toc_field(text, "Interface")
     print(f"Wall of Shame Forever {version}, interface {interface} (game {game_version_name(interface)})")
+    if args.upload and not args.sans_annonce:
+        check_announcement(version)
     path = build_zip(version)
     if args.upload:
         upload(path, version, interface, args.game_version_id, args.release_type)
