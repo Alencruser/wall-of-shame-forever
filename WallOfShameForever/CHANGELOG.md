@@ -1,5 +1,13 @@
 # Wall of Shame Forever
 
+## v0.5.0 (2026-11-13)
+
+- Professions for the guild's Discord bot: when you open a profession window, the addon notes the
+  recipes you know in it (with their color: orange, yellow, green, grey) and the level of all your
+  professions, gathering included. The companion sends them on /reload or logout (companion 0.6.0).
+  Nothing to do and nothing shown in game: open each profession once, then they stay up to date
+  every time you open it
+
 ## v0.4.4 (2026-11-10)
 
 - The Discord code is no longer removed when a character has no guild: the addon's settings are

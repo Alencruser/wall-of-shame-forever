@@ -674,6 +674,7 @@ end
 -- Outbox for the companion (SavedVariables). Payloads: see companion/events.py
 --   2|D|id|name|realm|guild|level|class|zone|killer|killerLevel|time|battletag
 --   2|L|id|name|realm|guild|level|class|time|battletag|up|zone   (up: 1 = level-up, 0 = login)
+--   2|P|...: professions, see QueueProfessions
 -------------------------------------------------------------------------------
 
 -- The battletag lets the bot find the Discord member (its battletag directory)
@@ -752,6 +753,111 @@ local function QueueForDiscord(level, zone, classFile, killer, killerLevel)
     local payload = DeathPayload(name .. "-" .. realm .. ":" .. time(), level, zone, classFile, killer, killerLevel)
     AddToOutbox(payload)
     ns.ShowStrip(payload)
+end
+
+-------------------------------------------------------------------------------
+-- Professions for the bot's directory, read when the player opens a profession window (the game
+-- lets an addon open one only during a key press or click, so it never opens them itself):
+-- the known recipes of that profession, and the level of every profession. Not real time:
+-- the companion reads them from the outbox on /reload or logout, like the other events.
+--   2|P|id|name|realm|guild|level|class|time|battletag|professions
+--   professions: skillLine:level:max:name:recipes, separated by ";" (recipes only for the
+--   professions opened so far, empty for gathering); recipes: id=color=name, separated by ","
+--   (color: 0 orange, 1 yellow, 2 green, 3 grey). id: name-realm:P:time, a new one per reading.
+-------------------------------------------------------------------------------
+
+local profSource -- profession whose recipes the game has loaded (TRADE_SKILL_DATA_SOURCE_CHANGED)
+local profPending
+
+local function Clean(text) -- the payload's separators never appear in a name
+    return (tostring(text or ""):gsub("[|;:,=]", " "))
+end
+
+local function MyProfessions()
+    local name, realm = Identity()
+    db.professions = db.professions or {}
+    local key = name .. "-" .. realm
+    db.professions[key] = db.professions[key] or {}
+    return db.professions[key]
+end
+
+-- Level of every profession (no window needed); professions unlearned since are forgotten
+local function ReadProfessionLevels(store)
+    if type(GetProfessions) ~= "function" then return end
+    local present = {}
+    for _, index in pairs({ GetProfessions() }) do
+        local name, _, level, max, _, _, skillLine = GetProfessionInfo(index)
+        if skillLine then
+            local entry = store[skillLine] or {}
+            entry.name, entry.level, entry.max = name, level, max
+            store[skillLine], present[skillLine] = entry, true
+        end
+    end
+    for skillLine in pairs(store) do
+        if not present[skillLine] then store[skillLine] = nil end
+    end
+end
+
+local function ProfessionsPayload(store)
+    local name, realm, guild, battleTag = Identity()
+    local _, classFile = UnitClass("player")
+    local list = {}
+    for skillLine, p in pairs(store) do
+        list[#list + 1] = table.concat({ skillLine, p.level or 0, p.max or 0, Clean(p.name), p.recipes or "" }, ":")
+    end
+    return table.concat({ "2", "P", name .. "-" .. realm .. ":P:" .. time(), name, realm, guild, UnitLevel("player"),
+        classFile or "", time(), battleTag, table.concat(list, ";") }, "|")
+end
+
+-- Only the latest reading of this character waits in the outbox
+local function QueueProfessions(store)
+    if not (db.discord and db.connection) then return end
+    local name, realm = Identity()
+    local prefix = name .. "-" .. realm .. ":P:"
+    for i = #db.outbox, 1, -1 do
+        if OutboxId(db.outbox[i]):sub(1, #prefix) == prefix then table.remove(db.outbox, i) end
+    end
+    AddToOutbox(ProfessionsPayload(store))
+end
+
+-- The open profession window: its known recipes, and every profession's level
+local function ReadOpenProfession()
+    profPending = nil
+    local T = C_TradeSkillUI
+    if type(T) ~= "table" or type(T.GetBaseProfessionInfo) ~= "function" then return end
+    -- another player's linked profession, the guild's or an NPC's crafting: not ours
+    for _, check in ipairs({ "IsTradeSkillLinked", "IsTradeSkillGuild", "IsNPCCrafting" }) do
+        if type(T[check]) == "function" and T[check]() then return end
+    end
+    local info = T.GetBaseProfessionInfo()
+    local skillLine = info and info.professionID
+    if not skillLine or skillLine ~= profSource then return end -- recipes not loaded yet
+    local store = MyProfessions()
+    ReadProfessionLevels(store)
+    local entry = store[skillLine] or { name = info.professionName, level = info.skillLevel, max = info.maxSkillLevel }
+    store[skillLine] = entry
+    local recipes = {}
+    for _, id in ipairs(T.GetAllRecipeIDs() or {}) do
+        local recipe = T.GetRecipeInfo(id)
+        if recipe and recipe.learned then
+            recipes[#recipes + 1] = id .. "=" .. (recipe.relativeDifficulty or "") .. "=" .. Clean(recipe.name)
+        end
+    end
+    entry.recipes = table.concat(recipes, ",")
+    QueueProfessions(store)
+end
+
+local function OnTradeSkillEvent(event)
+    local T = C_TradeSkillUI
+    local info = type(T) == "table" and type(T.GetBaseProfessionInfo) == "function" and T.GetBaseProfessionInfo()
+    if event == "TRADE_SKILL_DATA_SOURCE_CHANGED" then
+        profSource = info and info.professionID
+    end
+    -- the list updates several times in a row: read once, a moment after the last update
+    if not profPending and info and info.professionID == profSource then
+        profPending = true
+        C_Timer.After(0.5, ReadOpenProfession)
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -1259,6 +1365,10 @@ frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- professions: read when the player opens a profession window (see ReadOpenProfession)
+for _, event in ipairs({ "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE" }) do
+    pcall(frame.RegisterEvent, frame, event)
+end
 if CombatLogGetCurrentEventInfo then
     frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 else
@@ -1349,6 +1459,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
         ScheduleWorldKB()
     elseif event == "PLAYER_ENTERING_WORLD" then
         BaselineWorldKB()
+    elseif event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
+        OnTradeSkillEvent(event)
     elseif event == "CHAT_MSG_CHANNEL" then
         -- without a guild: "WOS:..." lines on the code channel (see QueueChat)
         local text, sender, _, channelString, _, _, _, _, baseName = ...

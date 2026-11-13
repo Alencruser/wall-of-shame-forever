@@ -11,6 +11,9 @@ FIELDS = {
     "W": ("duel", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "opponent", "zone"]),
     "K": ("kill", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "victim",
                    "victimLevel", "victimClass", "zone"]),
+    # professions of the character, read when a profession window is opened (see QueueProfessions)
+    "P": ("professions", ["id", "name", "realm", "guild", "level", "class", "time", "battletag",
+                          "professions"]),
 }
 NUMBERS = ("level", "killerLevel", "victimLevel", "time")
 
@@ -19,6 +22,30 @@ STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
 OUTBOX_RE = re.compile(r'\["outbox"\]\s*=\s*\{')
 CONNECTION_RE = re.compile(r'\["connection"\]\s*=\s*"((?:[^"\\]|\\.)*)"')
 SKIP_RE = re.compile(r'(?:\s|,|--[^\n]*)*')
+
+
+def _int(text):
+    return int(text) if re.fullmatch(r"-?\d+", text or "") else None
+
+
+def parse_professions(text):
+    """"skillLine:level:max:name:recipes;..." -> list; recipes "id=color=name,..." (None: never opened,
+    or a gathering profession). color: 0 orange, 1 yellow, 2 green, 3 grey (None: unknown)."""
+    professions = []
+    for entry in filter(None, (text or "").split(";")):
+        parts = entry.split(":")
+        if len(parts) != 5 or _int(parts[0]) is None:
+            continue
+        recipes = None
+        if parts[4]:
+            recipes = []
+            for recipe in parts[4].split(","):
+                fields = recipe.split("=")
+                if len(fields) == 3 and _int(fields[0]) is not None:
+                    recipes.append({"id": _int(fields[0]), "color": _int(fields[1]), "name": fields[2]})
+        professions.append({"skillLine": _int(parts[0]), "level": _int(parts[1]), "max": _int(parts[2]),
+                            "name": parts[3], "recipes": recipes})
+    return professions
 
 
 def parse_payload(payload, source):
@@ -36,6 +63,8 @@ def parse_payload(payload, source):
         ev["killer"] = ev["killer"] or None
     elif kind == "level":
         ev["up"] = ev["up"] == "1"  # real level-up (posted), not the login snapshot
+    elif kind == "professions":
+        ev["professions"] = parse_professions(ev["professions"])
     ev["test"] = ev["id"].startswith("test:")
     ev["source"] = source
     return ev

@@ -295,6 +295,11 @@ def check_outbox(paths, mtimes, state, sender):
             if ev["id"] in state:
                 continue
             state.add(ev["id"])
+            if ev["type"] == "professions":  # a new id per reading: the bot keeps the latest
+                log(f"professions found in SavedVariables: {ev['name']}, "
+                    + ", ".join(f"{p['name']} {p['level']}" for p in ev["professions"]))
+                sender.push(ev, None)
+                continue
             if ev["type"] in ("duel", "kill"):  # leaderboard: late is fine
                 log(f"{ev['type']} found in SavedVariables: {ev['name']} vs "
                     f"{ev.get('opponent') or ev.get('victim')}")

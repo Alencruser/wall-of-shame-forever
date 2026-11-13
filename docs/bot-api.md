@@ -84,6 +84,24 @@ Level event, sent at login and on every level-up. A level-up also goes through t
   class (a reroll of another class has its own level; a second character of the same class only
   counts once it is higher)
 
+Professions event, from SavedVariables only (no strip, no screenshot). The addon reads it when the player opens a profession window in game (the game does not let an addon open one by itself): the known recipes of that profession and the level of every profession. A new `id` for every reading; keep the latest per character (`time`):
+
+```json
+{ "type": "professions", "id": "Grumbar-Forever:P:1793702383", "name": "Grumbar", "realm": "Forever",
+  "guild": "", "level": 21, "class": "WARRIOR", "time": 1793702383, "battletag": "Pierre#1234",
+  "professions": [
+    { "skillLine": 165, "level": 146, "max": 225, "name": "Leatherworking",
+      "recipes": [ { "id": 2152, "color": 3, "name": "Light Armor Kit" } ] },
+    { "skillLine": 393, "level": 221, "max": 225, "name": "Skinning", "recipes": null } ],
+  "test": false, "source": "savedvariables" }
+```
+
+- `skillLine`: the game's profession id (165 Leatherworking, 185 Cooking, 393 Skinning…); `name` in
+  the language of the player's client
+- `recipes`: the learned recipes (`id`: recipe id, the one of Wowhead's `spell=` pages), with their
+  `color` against the player's skill: `0` orange, `1` yellow, `2` green, `3` grey (`null` unknown).
+  `null` for a gathering profession, or one not opened in game since the addon has this feature
+
 - `class`: WoW class token (`WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `SHAMAN`, `MAGE`,
   `WARLOCK`, `DRUID`)
 - `killer`: mob or player name, or the environment (`Falling`, `Drowning`, `Fatigue`, `Fire`,
