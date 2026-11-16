@@ -1,5 +1,17 @@
 # Wall of Shame Forever
 
+## v0.6.0 (2026-11-16)
+
+- Craft orders: guildmates order an item from your profession on the guild's Discord, and you see
+  the orders in game. Click the new minimap button (a badge shows how many are waiting) or type
+  `/wos commandes`: orders grouped by the character who asked, with the item, quantity and note.
+  Mark one done, or refuse it with an optional reason; the buyer is told on Discord. Orders arrive
+  at login or /reload (companion 0.7.0, which writes them for the addon). `/wos minimap` hides or
+  shows the button
+- A death was sometimes sent twice (hunters: a second report a few seconds later, without the
+  killer). The addon now counts one death per life, and sends the bot a technical report when the
+  game repeats a death, to find out why
+
 ## v0.5.0 (2026-11-13)
 
 - Professions for the guild's Discord bot: when you open a profession window, the addon notes the

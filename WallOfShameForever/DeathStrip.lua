@@ -10,6 +10,7 @@ local BLOCK = 4     -- block size in physical pixels
 local COLS = 48     -- blocks per row
 local SHOW_TIME = 3 -- seconds on screen
 local MAX_PAYLOAD = 240
+ns.STRIP_MAX_PAYLOAD = MAX_PAYLOAD -- Orders.lua cuts the refusal reason to fit
 -- Every channel uses 4 levels (0, 85, 170, 255): survives gamma and brightness settings
 local HEADER = {
     { 0, 0, 0 }, { 1, 1, 1 }, { 2, 2, 2 }, { 3, 3, 3 }, -- calibration

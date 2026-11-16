@@ -16,6 +16,13 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.0 + Compagnon 0.7.0
+
+- **Commandes d'artisanat** : sur la fiche d'un objet dans le salon des métiers, **🛒 Commander** : choisissez votre perso, la quantité, ajoutez une note. **📦 Mes commandes** pour suivre ou annuler, **📝 Ma note d'artisan** pour prévenir ceux qui vous commandent
+- **Artisans** : vos commandes arrivent en jeu à la connexion ou au `/reload`. Cliquez l'icône de la minimap (un badge compte les commandes) ou tapez `/wos commandes`, puis **Fait** ou **Refuser** (avec une raison si vous voulez). L'acheteur reçoit un message privé quand tout est réglé
+- **Mort en double corrigée** (surtout les chasseurs) : une seule carte par mort
+- **Mettez à jour le compagnon en 0.7.0** (menu du compagnon > **Check for updates**) : c'est lui qui apporte les commandes à l'addon. Addon : mettez-le à jour depuis CurseForge, et laissez **Wall of Shame Forever - Commandes** coché dans la liste des addons
+
 ## Addon v0.5.0 + Compagnon 0.6.0
 
 - **Métiers sur Discord** : l'addon note les recettes que vous connaissez (avec leur couleur : orange, jaune, vert, gris) et le niveau de tous vos métiers, récolte comprise

@@ -4,6 +4,7 @@ Two sources, both deduplicated on the event id:
 - realtime: reads the death strip the addon draws in the top-left corner (WoW must be the
   active window), and takes a screenshot of the death screen at the same moment
 - fallback: the outbox in SavedVariables, written by WoW on /reload, logout or exit
+Also fetches the pending craft orders from the bot for the addon (orders.py).
 """
 
 import glob
@@ -22,6 +23,7 @@ from PIL import Image
 
 import connection
 import events
+import orders
 import osplat
 import strip
 import wowpath
@@ -169,6 +171,8 @@ class Sender:
                 if ev.get("type") in ("duel", "kill"):
                     log(f"sent {ev['type']} of {ev['name']} vs {ev.get('opponent') or ev.get('victim')} "
                         f"({ev['source']}, screenshot: {'yes' if jpeg else 'no'})")
+                elif ev.get("type") == "order":
+                    log(f"sent order {ev['order']} {ev['status']} by {ev['name']} ({ev['source']})")
                 elif ev.get("type") == "level":
                     log(f"sent level {ev['level']} of {ev['name']} ({ev['class']}, {ev['source']}, "
                         f"screenshot: {'yes' if jpeg else 'no'})")
@@ -237,7 +241,7 @@ def read_strip(sct, area):
     return None
 
 
-def check_strip(sct, state, sender):
+def check_strip(sct, state, sender, order_poller=None):
     area = osplat.wow_window()
     if not area:
         return
@@ -246,9 +250,15 @@ def check_strip(sct, state, sender):
         return
     payload, box, position = found
     ev = events.parse_payload(payload, "realtime")
-    if not ev or ev["type"] not in ("death", "level", "duel", "kill") or ev["id"] in state:
+    if not ev or ev["type"] not in ("death", "level", "duel", "kill", "order") or ev["id"] in state:
         return
     state.add(ev["id"])
+    if order_poller:
+        order_poller.saw(ev)
+    if ev["type"] == "order":  # never a screenshot
+        log(f"order {ev['status']} seen on screen: {ev['order']} by {ev['name']}")
+        sender.push(ev, None)
+        return
     # the game screen without the strip (and, strip at the top, on macOS without the title bar)
     screen = strip.hide(grab(sct, area), box, position)
     buf = io.BytesIO()
@@ -264,7 +274,7 @@ def check_strip(sct, state, sender):
     sender.push(ev, buf.getvalue())
 
 
-def check_outbox(paths, mtimes, state, sender):
+def check_outbox(paths, mtimes, state, sender, order_poller=None):
     """New events from the SavedVariables files. The connection code is the one of the most
     recently written file (none there = the player left the guild: forget it)."""
     changed = []  # (mtime, text)
@@ -286,6 +296,8 @@ def check_outbox(paths, mtimes, state, sender):
             ev = events.parse_payload(payload, "savedvariables")
             if not ev:
                 continue
+            if order_poller:
+                order_poller.saw(ev)
             if ev["type"] == "level":
                 # sent again on every /reload or logout: the bot keeps the highest level per class,
                 # so resending is harmless, and levels come back after /shamewall reset-niveaux
@@ -298,6 +310,14 @@ def check_outbox(paths, mtimes, state, sender):
             if ev["type"] == "professions":  # a new id per reading: the bot keeps the latest
                 log(f"professions found in SavedVariables: {ev['name']}, "
                     + ", ".join(f"{p['name']} {p['level']}" for p in ev["professions"]))
+                sender.push(ev, None)
+                continue
+            if ev["type"] == "debug":  # diagnostic for the bot's debug.jsonl, never posted
+                log(f"debug report found in SavedVariables: {ev['topic']} from {ev['name']}")
+                sender.push(ev, None)
+                continue
+            if ev["type"] == "order":  # the bot needs it whenever it comes
+                log(f"order {ev['status']} found in SavedVariables: {ev['order']} by {ev['name']}")
                 sender.push(ev, None)
                 continue
             if ev["type"] in ("duel", "kill"):  # leaderboard: late is fine
@@ -353,6 +373,7 @@ def main(stop=None):
     cfg = load_config()
     dry_run = "--dry-run" in sys.argv
     state, sender = State(), Sender(dry_run)
+    order_poller = orders.Orders(log)
     if dry_run:
         log(f"dry run: events and screenshots saved to {OUT_DIR}")
     elif cfg["connection"]:
@@ -372,7 +393,7 @@ def main(stop=None):
                             "without screenshots")
                 capture_ok, last_permission = allowed, time.time()
             if cfg["realtime"] and capture_ok:
-                check_strip(sct, state, sender)
+                check_strip(sct, state, sender, order_poller)
             if time.time() - last_detect > DETECT_INTERVAL:
                 dirs = wowpath.find_game_dirs(cfg["wow_path"], HERE)
                 if dirs != game_dirs or not last_detect:  # always say it on the first pass
@@ -384,8 +405,9 @@ def main(stop=None):
                 write_builtin_code(game_dirs)
                 last_detect = time.time()
             if time.time() - last_outbox > OUTBOX_INTERVAL:
-                check_outbox(saved_variables(game_dirs), mtimes, state, sender)
+                check_outbox(saved_variables(game_dirs), mtimes, state, sender, order_poller)
                 last_outbox = time.time()
+                order_poller.poll(sender, saved_variables(game_dirs), game_dirs)
             sender.flush()
             stop.wait(STRIP_INTERVAL)
     log("companion stopped")

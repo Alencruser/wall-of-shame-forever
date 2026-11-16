@@ -756,6 +756,94 @@ local function QueueForDiscord(level, zone, classFile, killer, killerLevel)
 end
 
 -------------------------------------------------------------------------------
+-- One death per life. Hunters' deaths came twice (a second PLAYER_DEAD a few seconds after the
+-- real one, then sent without killer): a PLAYER_DEAD while the counted death is not over (no
+-- resurrection since) is ignored, and a diagnostic goes to the bot's debug.jsonl (outbox only,
+-- never on screen, never posted) with what happened around both, to find the cause: player and
+-- pet state, and the last death-related events with their time from the counted death in ms.
+--   2|X|id|name|realm|guild|level|class|time|battletag|topic|details
+-------------------------------------------------------------------------------
+
+local DEATH_TRACE_MAX = 12
+local deathTrace = {}   -- { t = GetTime(), what = "EVENT state" }
+local deathAt, deathSnap -- GetTime() and state of the counted death; nil while alive
+local deathRepeats = 0
+
+local function Flag(v)
+    if Secret(v) then return "s" end
+    return v and "1" or "0"
+end
+
+local function Num(v)
+    if Secret(v) then return "s" end
+    return tostring(v or "?")
+end
+
+local function DeathState()
+    local hasPet = UnitExists("pet")
+    local okFeign, feign = pcall(function() return UnitIsFeignDeath and UnitIsFeignDeath("player") end)
+    return table.concat({
+        "dead=" .. Flag(UnitIsDead("player")), "ghost=" .. Flag(UnitIsGhost("player")),
+        "hp=" .. Num(UnitHealth("player")), "feign=" .. (okFeign and Flag(feign) or "?"),
+        "pet=" .. Flag(hasPet), "petDead=" .. (hasPet and Flag(UnitIsDead("pet")) or "-"),
+        "petHp=" .. (hasPet and Num(UnitHealth("pet")) or "-"),
+    }, ",")
+end
+
+local function DeadOrGhost() -- a secret value (combat) counts as dead: never tested as a boolean
+    local v = UnitIsDeadOrGhost("player")
+    if Secret(v) then return true end
+    return v and true or false
+end
+
+local function TraceDeath(what)
+    table.insert(deathTrace, { t = GetTime(), what = what .. " " .. DeathState() })
+    while #deathTrace > DEATH_TRACE_MAX do table.remove(deathTrace, 1) end
+end
+
+local function ReportRepeatDeath(now)
+    if not (db.discord and db.connection) then return end
+    deathRepeats = deathRepeats + 1
+    local name, realm, guild, battleTag = Identity()
+    local _, classFile = UnitClass("player")
+    local trace = {}
+    for _, e in ipairs(deathTrace) do
+        table.insert(trace, string.format("%+d %s", math.floor((e.t - deathAt) * 1000 + 0.5), e.what))
+    end
+    local details = table.concat({
+        "dtMs=" .. math.floor((now - deathAt) * 1000 + 0.5),
+        "first=" .. (deathSnap or "?"),
+        "zone=" .. (GetRealZoneText() or ""),
+        "trace=" .. table.concat(trace, " / "),
+    }, ";"):gsub("|", "/"):sub(1, 1500)
+    AddToOutbox(table.concat({ "2", "X", name .. "-" .. realm .. ":X:" .. time() .. ":" .. deathRepeats, name, realm,
+        guild, UnitLevel("player"), classFile or "", time(), battleTag, "mort-double", details }, "|"))
+end
+
+-- PLAYER_DEAD: true for a new death (counted and sent), false for a repeat of the current one.
+-- A repeat needs the player still dead or a ghost, or less than 30 s since the counted death.
+local function NewDeath()
+    local now = GetTime()
+    TraceDeath("PLAYER_DEAD")
+    if deathAt and (DeadOrGhost() or now - deathAt < 30) then
+        ReportRepeatDeath(now)
+        return false
+    end
+    deathAt, deathSnap = now, DeathState()
+    return true
+end
+
+-- Back to life (resurrection, spirit back to the body): the next PLAYER_DEAD is a new death.
+-- PLAYER_ALIVE also fires on release (dead → ghost): still the same death then.
+local function OnDeathEvent(event, unit)
+    if event == "UNIT_PET" and unit ~= "player" then return end
+    TraceDeath(event)
+    if (event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST") and not DeadOrGhost() then
+        deathAt, deathSnap = nil, nil
+    end
+end
+
+-------------------------------------------------------------------------------
 -- Professions for the bot's directory, read when the player opens a profession window (the game
 -- lets an addon open one only during a key press or click, so it never opens them itself):
 -- the known recipes of that profession, and the level of every profession. Not real time:
@@ -1365,6 +1453,10 @@ frame:RegisterEvent("PLAYER_GUILD_UPDATE")
 frame:RegisterEvent("CHAT_MSG_SYSTEM")
 frame:RegisterEvent("CHAT_MSG_CHANNEL")
 frame:RegisterEvent("PLAYER_REGEN_ENABLED")
+-- one death per life, and the diagnostic of a repeated death (see NewDeath)
+for _, event in ipairs({ "PLAYER_ALIVE", "PLAYER_UNGHOST", "UNIT_PET" }) do
+    pcall(frame.RegisterEvent, frame, event)
+end
 -- professions: read when the player opens a profession window (see ReadOpenProfession)
 for _, event in ipairs({ "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE" }) do
     pcall(frame.RegisterEvent, frame, event)
@@ -1434,6 +1526,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_LEVEL_UP" then
         OnOwnLevelUp((...))
     elseif event == "PLAYER_DEAD" then
+        if not NewDeath() then return end -- the same death again (see NewDeath)
         lastOwnDeath = GetTime()
         -- short delay so the killing blow is already in the combat log; without the combat log
         -- (WoW Forever), wait up to 3 seconds for the death recap of this death
@@ -1447,6 +1540,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
             end
         end
         C_Timer.After(0.5, Wait)
+    elseif event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" or event == "UNIT_PET" then
+        OnDeathEvent(event, ...)
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         OnCombatLog()
     elseif event == "CHAT_MSG_SYSTEM" then
@@ -1508,6 +1603,7 @@ SetLanguage = function(lang)
     Print(L("lang_set", L("lang_" .. lang)))
     RefreshWindow()
     RefreshOptions()
+    if ns.RefreshOrders then ns.RefreshOrders() end
 end
 
 -------------------------------------------------------------------------------
@@ -1880,6 +1976,10 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         end
     elseif msg == "options" or msg == "option" or msg == "config" or msg == "settings" then
         ToggleOptions()
+    elseif msg == "commandes" or msg == "commande" or msg == "orders" or msg == "order" then
+        if ns.ToggleOrders then ns.ToggleOrders() end -- craft orders (Orders.lua)
+    elseif msg == "minimap" or msg == "minicarte" then
+        if ns.ToggleMinimapButton then ns.ToggleMinimapButton() end
     elseif msg == "volume" or msg:match("^volume%s") then
         local value = tonumber(msg:match("%s+(%d+)$"))
         if value and value >= 1 and value <= 100 then
@@ -1934,8 +2034,12 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
     end
 end
 
--- For GuildMap.lua (loaded after this file)
+-- For GuildMap.lua and Orders.lua (loaded after this file)
 ns.Send = Send
+ns.Print = Print
+ns.Identity = Identity
+ns.Clean = Clean
+ns.AddToOutbox = AddToOutbox
 ns.GetDB = function() return db end
 ns.L = L
 ns.ClassColored = ClassColored

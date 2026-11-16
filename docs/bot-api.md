@@ -102,6 +102,39 @@ Professions event, from SavedVariables only (no strip, no screenshot). The addon
   `color` against the player's skill: `0` orange, `1` yellow, `2` green, `3` grey (`null` unknown).
   `null` for a gathering profession, or one not opened in game since the addon has this feature
 
+Order event, on the strip right away and in SavedVariables as a fallback, never with a screenshot:
+the artisan marked a craft order (see [Craft orders](#craft-orders)) as done or refused in game.
+One `id` per order and status:
+
+```json
+{ "type": "order", "id": "Grumbar-Forever:O:3f9a1c27:refused", "name": "Grumbar", "realm": "Forever",
+  "guild": "", "level": 30, "class": "WARRIOR", "time": 1793702383, "battletag": "Pierre#1234",
+  "order": "3f9a1c27", "status": "refused", "reason": "Out of bronze, sorry",
+  "test": false, "source": "savedvariables" }
+```
+
+- `order`: the order `id` from the orders list; `status`: `done` or `refused`; `reason`: free text
+  for a refusal, `""` if none (ignored for `done`)
+- the bot applies it only if the order exists, is still pending and the sender (`name`, `realm`,
+  case-insensitive) is its artisan; otherwise it answers `200` and ignores it (unknown order,
+  already done/refused/cancelled by the buyer, another artisan), so the companion can drop it
+- when the buyer has no pending order left with that artisan character, the bot sends them one
+  Discord DM listing every order done or refused since the last DM (cancelled ones never)
+
+Debug event, from SavedVariables only (no strip, no screenshot): a technical report from the addon,
+never posted. The bot appends it as one JSON line to `debug.jsonl` and answers `200`:
+
+```json
+{ "type": "debug", "id": "Grumbar-Forever:X:1793702390:1", "name": "Grumbar", "realm": "Forever",
+  "guild": "", "level": 30, "class": "HUNTER", "time": 1793702390, "battletag": "Pierre#1234",
+  "topic": "mort-double", "details": "dtMs=2010;first=dead=1,ghost=0,...;zone=...;trace=-120 UNIT_PET ... / +0 PLAYER_DEAD ...",
+  "test": false, "source": "savedvariables" }
+```
+
+- `topic`: what the report is about, letters, digits, `-` and `_` (40 at most). `mort-double`: the
+  game sent `PLAYER_DEAD` again for a death already counted; the addon did not send it twice
+- `details`: free text from the addon (4000 characters at most), `key=value` parts separated by `;`
+
 - `class`: WoW class token (`WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `SHAMAN`, `MAGE`,
   `WARLOCK`, `DRUID`)
 - `killer`: mob or player name, or the environment (`Falling`, `Drowning`, `Fatigue`, `Fire`,
@@ -113,6 +146,43 @@ Professions event, from SavedVariables only (no strip, no screenshot). The addon
   otherwise reply 200 without posting, so that players cannot flood the channels
 - `source`: `realtime` (strip read on screen, with screenshot) or `savedvariables` (fallback after
   /reload or logout, no screenshot)
+
+## Craft orders
+
+Guild members order items from an artisan on Discord (🛒 on an item card of the professions
+directory). The companion fetches the pending orders of its player's characters and the addon
+shows them in game; the artisan reports each one with an `order` event (above).
+
+`GET <url from the code, last path segment replaced by "orders">`, e.g.
+`https://bot.example/shamewall/deaths` → `https://bot.example/shamewall/orders`
+
+| Part | Content |
+|---|---|
+| header `Authorization` | `Bearer <guild key from the code>` (`401` on a bad key, like the POST) |
+| query `battletag` | the player's battletag (`BNGetInfo`), may be empty |
+| query `chars` | the player's characters as `Name-Realm`, comma-separated (URL-encoded), may be empty |
+
+Answer `200`, `application/json`: the **pending** orders whose artisan character belongs to that
+battletag (as the bot knows it from professions and level events) **or** is in `chars`
+(case-insensitive), oldest first. Done, refused and cancelled orders are never listed, so an order
+disappears from the list once reported or cancelled.
+
+```json
+{ "orders": [
+  { "id": "3f9a1c27", "artisan": "Grumbar-Forever",
+    "buyer": { "name": "Thrall", "realm": "Forever", "class": "SHAMAN", "level": 42 },
+    "itemId": 2848, "itemName": "Bronze Shortsword", "qty": 2,
+    "note": "I bring the bars", "createdAt": 1793702383 } ] }
+```
+
+- `id`: 8 hex characters, unique in the guild; `artisan`: the character the order is for
+- `buyer.class` (WoW class token) and `buyer.level` are `null` when the bot does not know the
+  buyer's character (name typed by hand); `buyer.realm` is then the artisan's realm
+- `itemId`: the crafted item (`null` for a recipe that makes no item, e.g. an enchantment);
+  `itemName`: in French, as shown on Discord
+- `qty`: 1 to 99; `note`: the buyer's note, `""` if none (200 characters at most);
+  `createdAt`: Unix timestamp of the order
+- poll every 2 minutes or so; the bot only logs a request when its answer changes
 
 ## Response
 

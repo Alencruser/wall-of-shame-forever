@@ -12,6 +12,12 @@ Small Windows program that sends **your own** deaths to the guild's Discord bot.
 
 A death is never sent twice (event id).
 
+**Craft orders**: while it has a connection code, the companion asks the bot for the pending
+craft orders of your characters (at startup, then every 2 minutes) and writes them to a small
+addon, `Interface\AddOns\WallOfShameForever_Commandes` (in every game folder with the addon).
+WoW never writes that file: the addon reads it at login or `/reload`. When you tick an order done
+or refused in game, the event goes to the bot like a death. Nothing pops up: log lines only.
+
 ## Setup
 
 Players have nothing to configure: install the addon, start the companion.

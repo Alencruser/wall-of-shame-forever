@@ -1,0 +1,233 @@
+"""Craft orders, companion side: the 2|O|... event, the request to the bot, the file written for the
+addon, and the background poll."""
+import os
+import shutil
+import sys
+import tempfile
+import threading
+import time
+import unittest
+import urllib.parse
+from unittest import mock
+
+import lupa
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
+import connection  # noqa: E402
+import events  # noqa: E402
+import orders  # noqa: E402
+import wallofshame_companion as companion  # noqa: E402
+
+PAYLOAD = ("2|O|Chamy Chan-CAMWOWEU5Realm2PvP:O:42:refused|Chamy Chan|CAMWOWEU5Realm2PvP|Bagarre|21|SHAMAN|"
+           "1763030000|Alen#1234|42|refused|Pas les compos")
+
+SAVED = '''
+WallOfShameForeverDB = {
+["connection"] = "swf1.abc",
+["orderIdentity"] = {
+["battletag"] = "Alen#1234",
+["characters"] = {
+"Chamy Chan-CAMWOWEU5Realm2PvP", -- [1]
+"Gr\\"umbar-Forever", -- [2]
+},
+},
+["outbox"] = {
+"2|L|x",
+},
+}
+'''
+
+ORDER = {"id": "o2", "artisan": "Chamy Chan-CAMWOWEU5Realm2PvP",
+         "buyer": {"name": "Grumbar", "realm": "Forever", "class": "WARRIOR", "level": 30},
+         "itemId": 2152, "itemName": 'Kit "léger"\\ok\nsuite|x\x01', "qty": 2, "note": "", "createdAt": 1763030500}
+
+
+class Reply:
+    def __init__(self, status_code, data=None):
+        self.status_code, self.data = status_code, data
+
+    def json(self):
+        if self.data is None:
+            raise ValueError("no JSON")
+        return self.data
+
+
+class PayloadTest(unittest.TestCase):
+    def test_order(self):
+        ev = events.parse_payload(PAYLOAD, "savedvariables")
+        self.assertEqual(ev["type"], "order")
+        self.assertEqual((ev["order"], ev["status"], ev["reason"]), ("42", "refused", "Pas les compos"))
+        self.assertEqual((ev["level"], ev["time"], ev["battletag"]), (21, 1763030000, "Alen#1234"))
+        self.assertFalse(ev["test"])
+
+    def test_done_with_empty_reason(self):
+        ev = events.parse_payload(PAYLOAD.replace("refused|Pas les compos", "done|"), "realtime")
+        self.assertEqual((ev["status"], ev["reason"], ev["source"]), ("done", "", "realtime"))
+
+    def test_bad_status_or_fields(self):
+        self.assertIsNone(events.parse_payload(PAYLOAD.replace("|refused|", "|maybe|"), "realtime"))
+        self.assertIsNone(events.parse_payload(PAYLOAD + "|extra", "realtime"))
+
+
+class RequestTest(unittest.TestCase):
+    def test_url(self):
+        self.assertEqual(orders.orders_url("https://bot.example.org/shamewall/deaths"),
+                         "https://bot.example.org/shamewall/orders")
+        self.assertEqual(orders.orders_url("http://127.0.0.1:8787/deaths/?x=1"), "http://127.0.0.1:8787/orders")
+
+    def test_query(self):
+        url = orders.request_url("https://bot.example.org/shamewall/deaths", "Alen#1234",
+                                 ["Chamy Chan-Realm", "Grumbar-Realm"])
+        parts = urllib.parse.urlsplit(url)
+        self.assertEqual(parts.path, "/shamewall/orders")
+        self.assertEqual(urllib.parse.parse_qs(parts.query, keep_blank_values=True),
+                         {"battletag": ["Alen#1234"], "chars": ["Chamy Chan-Realm,Grumbar-Realm"]})
+        self.assertIn("battletag=&", orders.request_url("https://b/x/deaths", None, ["A-R"]))
+
+    def test_identity(self):
+        self.assertEqual(orders.read_identity(SAVED),
+                         ("Alen#1234", ["Chamy Chan-CAMWOWEU5Realm2PvP", 'Gr"umbar-Forever']))
+        self.assertIsNone(orders.read_identity('WallOfShameForeverDB = { ["outbox"] = {} }'))
+
+    def test_groups(self):
+        groups = orders.group_identities([("A#1", ["X-R"]), ("", ["X-R", "Y-R"]), ("B#2", ["Z-R"]),
+                                          ("A#1", ["W-R"])])
+        self.assertEqual(groups, {"A#1": ["W-R", "X-R"], "": ["Y-R"], "B#2": ["Z-R"]})
+        self.assertEqual(orders.group_identities([("", [])]), {})
+
+    def test_clean_and_merge(self):
+        self.assertIsNone(orders.clean_orders({"nope": []}))
+        a = orders.clean_orders({"orders": [dict(ORDER, qty="3", extra=1), {"id": ""}, "x"]})
+        self.assertEqual(len(a), 1)
+        self.assertEqual((a[0]["qty"], list(a[0])), (3, list(orders.ORDER_KEYS)))
+        b = orders.clean_orders({"orders": [dict(ORDER, id="o1", createdAt=1), ORDER]})
+        self.assertEqual([o["id"] for o in orders.merge([a, b])], ["o1", "o2"])
+
+
+def make_game(test, toc="## Interface: 11508\n## Title: Wall of Shame Forever\nCore.lua\n"):
+    game = tempfile.mkdtemp()
+    test.addCleanup(shutil.rmtree, game)
+    addon = os.path.join(game, "Interface", "AddOns", "WallOfShameForever")
+    os.makedirs(addon)
+    with open(os.path.join(addon, "WallOfShameForever.toc"), "w", encoding="utf-8") as f:
+        f.write(toc)
+    return game
+
+
+class WriterTest(unittest.TestCase):
+    def setUp(self):
+        self.game = make_game(self)
+        self.folder = os.path.join(self.game, "Interface", "AddOns", orders.FOLDER)
+
+    def read(self, name):
+        with open(os.path.join(self.folder, name), encoding="utf-8") as f:
+            return f.read()
+
+    def test_lua_round_trip(self):
+        self.assertTrue(orders.write_orders(self.game, orders.merge([[ORDER]]), now=1000))
+        lua = lupa.LuaRuntime()
+        lua.execute(self.read(orders.LUA_FILE))
+        data = lua.globals().WallOfShameForever_Orders
+        self.assertEqual(data.updated, 1000)
+        order = data.orders[1]
+        self.assertEqual(order.itemName.decode() if isinstance(order.itemName, bytes) else order.itemName,
+                         ORDER["itemName"])
+        self.assertEqual((order.qty, order.buyer.level, order.note), (2, 30, ""))
+        self.assertIsNone(data.orders[2])
+
+    def test_escaping(self):
+        self.assertEqual(orders.lua_string('a"b\\c\nd\r\te\x01|é'), '"a\\"b\\\\c\\nd\\r\\te\\001|é"')
+
+    def test_no_rewrite_when_unchanged(self):
+        orders.write_orders(self.game, [ORDER], now=1000)
+        self.assertFalse(orders.write_orders(self.game, [ORDER], now=2000))
+        self.assertIn('["updated"] = 1000', self.read(orders.LUA_FILE))
+        self.assertTrue(orders.write_orders(self.game, [], now=3000))
+        self.assertIn('["orders"] = {}', self.read(orders.LUA_FILE))
+        self.assertFalse(os.path.exists(os.path.join(self.folder, orders.LUA_FILE + ".tmp")))
+
+    def test_toc(self):
+        orders.write_orders(self.game, [], now=1)
+        toc = self.read(orders.TOC_FILE)
+        self.assertTrue(toc.startswith("## Interface: 11508\n"))
+        self.assertIn("## Title: Wall of Shame Forever - Commandes\n", toc)
+        self.assertTrue(toc.endswith("\nCommandes.lua\n"))
+
+    def test_toc_fallback(self):
+        os.remove(os.path.join(self.game, "Interface", "AddOns", "WallOfShameForever", "WallOfShameForever.toc"))
+        self.assertEqual(orders.addon_interface(self.game), orders.DEFAULT_INTERFACE)
+        self.assertFalse(orders.write_orders(self.game, [], now=1))  # no addon: no folder
+        self.assertFalse(os.path.exists(self.folder))
+
+
+class PollTest(unittest.TestCase):
+    def setUp(self):
+        self.game = make_game(self, toc="")
+        self.saved = os.path.join(self.game, "SavedVariables.lua")
+        with open(self.saved, "w", encoding="utf-8") as f:
+            f.write(SAVED)
+        with mock.patch.object(companion, "log"):
+            self.sender = companion.Sender(dry_run=False)
+            self.sender.set_code(connection.encode("https://bot.example.org/shamewall/deaths", "k3y"))
+        self.logs = []
+        self.poller = orders.Orders(self.logs.append)
+        self.lua = os.path.join(self.game, "Interface", "AddOns", orders.FOLDER, orders.LUA_FILE)
+
+    def poll(self, reply, now):
+        """A poll, waiting for its background thread; the mock of requests.get."""
+        with mock.patch.object(orders.requests, "get", return_value=reply) as get:
+            thread = self.poller.poll(self.sender, [self.saved], [self.game], now=now)
+            if thread:
+                thread.join(5)
+        return get
+
+    def test_writes_then_waits(self):
+        self.poller.saw({"name": "Other", "realm": "R", "battletag": ""})
+        get = self.poll(Reply(200, {"orders": [ORDER]}), now=1000)
+        self.assertEqual(get.call_count, 2)  # Alen#1234, and the character seen without battletag
+        self.assertEqual(get.call_args_list[0].kwargs["headers"], {"Authorization": "Bearer k3y"})
+        self.assertTrue(os.path.exists(self.lua))
+        self.assertEqual(self.poll(Reply(200, {"orders": []}), now=1060).call_count, 0)  # not due yet
+
+    def test_401_logged_once_and_waits_an_hour(self):
+        self.poll(Reply(401), now=1000)
+        self.poll(Reply(401), now=1000 + orders.POLL_INTERVAL)
+        self.assertEqual(len(self.logs), 1)
+        self.assertFalse(os.path.exists(os.path.dirname(self.lua)))
+        self.assertEqual(self.poll(Reply(200, {"orders": []}), now=1000 + orders.REFUSED_RETRY).call_count, 1)
+
+    def test_error_keeps_the_last_file(self):
+        self.poll(Reply(200, {"orders": [ORDER]}), now=1000)
+        self.poll(Reply(500), now=2000)
+        with open(self.lua, encoding="utf-8") as f:
+            self.assertIn('"o2"', f.read())
+
+    def test_no_code_no_request(self):
+        self.sender.url = None
+        self.assertEqual(self.poll(Reply(200, {"orders": []}), now=1000).call_count, 0)
+
+    def test_never_blocks_and_one_at_a_time(self):
+        release, calls = threading.Event(), []
+
+        def slow_get(*_args, **_kwargs):  # a bot that answers only when released
+            calls.append(1)
+            release.wait(5)
+            return Reply(200, {"orders": [ORDER]})
+
+        with mock.patch.object(orders.requests, "get", side_effect=slow_get):
+            start = time.monotonic()
+            thread = self.poller.poll(self.sender, [self.saved], [self.game], now=1000)
+            self.assertLess(time.monotonic() - start, 1)  # back to the main loop at once
+            self.assertIsNotNone(thread)
+            # still running, even when the next one is due: skipped
+            self.assertIsNone(self.poller.poll(self.sender, [self.saved], [self.game], now=5000))
+            release.set()
+            thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(calls), 1)  # one battletag, one request
+        self.assertTrue(os.path.exists(self.lua))
+
+
+if __name__ == "__main__":
+    unittest.main()
