@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.6.1 (2026-11-17)
+
+- Profession levels without opening anything: fishing, gathering and the others are read at login,
+  at logout and whenever a skill point is gained (a new reading only when a level changed). Recipes
+  are still read when a profession window opens, and the ones already known are kept
+
 ## v0.6.0 (2026-11-16)
 
 - Craft orders: guildmates order an item from your profession on the guild's Discord, and you see

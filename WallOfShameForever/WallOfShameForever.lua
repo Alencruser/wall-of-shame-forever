@@ -869,18 +869,22 @@ local function MyProfessions()
     return db.professions[key]
 end
 
--- Level of every profession (no window needed); professions unlearned since are forgotten
+-- Level of every profession (no window needed); professions unlearned since are forgotten, but only
+-- when the game answered for every profession (right after login it may not have them yet)
 local function ReadProfessionLevels(store)
     if type(GetProfessions) ~= "function" then return end
-    local present = {}
+    local present, indexes, read = {}, 0, 0
     for _, index in pairs({ GetProfessions() }) do
+        indexes = indexes + 1
         local name, _, level, max, _, _, skillLine = GetProfessionInfo(index)
         if skillLine then
+            read = read + 1
             local entry = store[skillLine] or {}
             entry.name, entry.level, entry.max = name, level, max
             store[skillLine], present[skillLine] = entry, true
         end
     end
+    if indexes == 0 or read < indexes then return end
     for skillLine in pairs(store) do
         if not present[skillLine] then store[skillLine] = nil end
     end
@@ -933,6 +937,33 @@ local function ReadOpenProfession()
     end
     entry.recipes = table.concat(recipes, ",")
     QueueProfessions(store)
+end
+
+-- Levels only, no window needed (fishing and gathering have no recipe window): at login, at logout
+-- and when a skill changes. A new reading is queued only when a level changed; the known recipes
+-- stay as they are (read when a profession window opens).
+local levelsPending
+
+local function RefreshProfessionLevels()
+    levelsPending = nil
+    if type(GetProfessions) ~= "function" or not db then return end
+    local store = MyProfessions()
+    local before = {}
+    for skillLine, p in pairs(store) do before[skillLine] = (p.level or 0) .. "/" .. (p.max or 0) end
+    ReadProfessionLevels(store)
+    local changed = false
+    for skillLine, p in pairs(store) do
+        if before[skillLine] ~= (p.level or 0) .. "/" .. (p.max or 0) then changed = true end
+        before[skillLine] = nil
+    end
+    if next(before) then changed = true end -- a profession unlearned
+    if changed then QueueProfessions(store) end
+end
+
+local function ScheduleProfessionLevels(delay)
+    if levelsPending then return end
+    levelsPending = true
+    C_Timer.After(delay or 1, RefreshProfessionLevels)
 end
 
 local function OnTradeSkillEvent(event)
@@ -1458,7 +1489,8 @@ for _, event in ipairs({ "PLAYER_ALIVE", "PLAYER_UNGHOST", "UNIT_PET" }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 -- professions: read when the player opens a profession window (see ReadOpenProfession)
-for _, event in ipairs({ "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE" }) do
+for _, event in ipairs({ "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_LIST_UPDATE", "SKILL_LINES_CHANGED",
+    "PLAYER_LOGOUT" }) do
     pcall(frame.RegisterEvent, frame, event)
 end
 if CombatLogGetCurrentEventInfo then
@@ -1519,6 +1551,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
             Send("H")
             local statusLevel, statusZone, statusClass = MyStatus()
             Send(table.concat({ "S", statusLevel, statusZone, statusClass, Member(playerName).deaths or 0 }, "|"))
+            ScheduleProfessionLevels() -- levels gained elsewhere (another PC) or before this version
         end)
         Print(L("loaded"))
         pcall(RegisterGameOptions)
@@ -1556,6 +1589,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
         BaselineWorldKB()
     elseif event == "TRADE_SKILL_DATA_SOURCE_CHANGED" or event == "TRADE_SKILL_LIST_UPDATE" then
         OnTradeSkillEvent(event)
+    elseif event == "SKILL_LINES_CHANGED" then
+        ScheduleProfessionLevels()
+    elseif event == "PLAYER_LOGOUT" then
+        RefreshProfessionLevels() -- right away: the game writes SavedVariables just after
     elseif event == "CHAT_MSG_CHANNEL" then
         -- without a guild: "WOS:..." lines on the code channel (see QueueChat)
         local text, sender, _, channelString, _, _, _, _, baseName = ...

@@ -16,6 +16,11 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.1
+
+- **Niveaux de métiers à jour sans rien ouvrir** : Pêche, Minage, Herboristerie, Dépeçage et les autres suivent à la connexion, à la déconnexion et à chaque point gagné. Plus besoin d'ouvrir une fenêtre de métier pour mettre à jour un niveau (les recettes, elles, se relisent toujours à l'ouverture du métier)
+- Addon : mettez-le à jour depuis CurseForge
+
 ## Addon v0.6.0 + Compagnon 0.7.0
 
 - **Commandes d'artisanat** : sur la fiche d'un objet dans le salon des métiers, **🛒 Commander** : choisissez votre perso, la quantité, ajoutez une note. **📦 Mes commandes** pour suivre ou annuler, **📝 Ma note d'artisan** pour prévenir ceux qui vous commandent
