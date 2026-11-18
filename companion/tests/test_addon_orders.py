@@ -368,7 +368,7 @@ class WindowTest(unittest.TestCase):
         win = a.g.WallOfShameForeverOrders
         self.assertTrue(win.IsShown(win))
         self.assertEqual(win.title._text, "Commandes de Chamy Chan")
-        self.assertEqual(win.pageText._text, "Page 1/3")
+        self.assertEqual(win.pageText._text, "Page 1/2")  # 600 px high since v0.6.2
         self.assertEqual(win.total._text, "15 commandes en attente")
         self.assertTrue(a.g.STATE.requested[99999])  # unknown item asked to the server
         a.g.Fire("GET_ITEM_INFO_RECEIVED", 99999, False)
@@ -397,3 +397,61 @@ class WindowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MaterialsTest(unittest.TestCase):
+    """Materials column (v0.6.2): the selected buyer's or the total, "have / needed" from the bags."""
+
+    LEATHER = {"itemId": 2318, "name": "Cuir léger", "qty": 8}
+    THREAD = {"itemId": 2320, "name": "Fil grossier", "qty": 2}
+
+    def test_read_and_sum(self):
+        a = Addon(orders=[
+            order("a", buyer="Liandra", reply="Prête vendredi", reagents=[self.LEATHER, self.THREAD, {"itemId": "x"}]),
+            order("b", buyer="Liandra", reagents=[self.LEATHER]),
+            order("c", buyer="Grumbar", reagents=[]),
+        ]).login()
+        pending = a.orders.List("char")
+        first = [o for o in pending.values() if o.id == "a"][0]
+        self.assertEqual(first.reply, "Prête vendredi")
+        self.assertEqual(len(first.reagents), 2)  # the bad entry dropped
+        total, unknown = a.orders.Materials(pending)
+        self.assertEqual([(m.itemId, m.qty) for m in total.values()], [(2318, 16), (2320, 2)])  # by name
+        self.assertFalse(unknown)
+
+    def test_window_buyer_total_and_counts(self):
+        a = Addon(orders=[
+            order("a", buyer="Liandra", created=1, reagents=[self.LEATHER, self.THREAD]),
+            order("b", buyer="Grumbar", created=2, reagents=[self.LEATHER]),
+        ]).login()
+        a.lua.execute("function GetItemCount(id) return id == 2318 and 10 or 0 end")
+        a.orders.Toggle(True)
+        win = a.g.WallOfShameForeverOrders
+        # Liandra waits the longest: her materials first; 10 leather of 8, 0 thread of 2
+        self.assertIn("Liandra", win.matsBuyer.label._text)
+        self.assertIn("Il manque 2 objet(s)", win.matsFoot._text)
+        win.matsTotal.GetScript(win.matsTotal, "OnClick")(win.matsTotal)
+        self.assertIn("Il manque 8 objet(s)", win.matsFoot._text)  # 16 leather for 10, 2 thread
+        # a click on Grumbar's header shows his: 8 leather for 10, all there
+        header = a.lua.eval("""function(frames, name)
+            for _, f in ipairs(frames) do
+                local g = rawget(f, "group")
+                if g and g.buyer.name == name then return f end
+            end
+        end""")(a.g.STATE.frames, "Grumbar")
+        header._scripts.OnMouseUp(header)
+        self.assertIn("Grumbar", win.matsBuyer.label._text)
+        self.assertIn("Tout est dans tes sacs", win.matsFoot._text)
+        # back to the total; the bags change: the counts follow
+        win.matsTotal.GetScript(win.matsTotal, "OnClick")(win.matsTotal)
+        a.lua.execute("function GetItemCount(id) return 99 end")
+        a.g.Fire("BAG_UPDATE_DELAYED")
+        a.g.RunTimers()
+        self.assertIn("Tout est dans tes sacs", win.matsFoot._text)
+
+    def test_older_companion(self):
+        a = Addon(orders=[order("a")]).login()  # no "reagents": companion older than 0.7.1
+        a.orders.Toggle(True)
+        win = a.g.WallOfShameForeverOrders
+        self.assertIn("Mets à jour le compagnon", win.matsFoot._text)
+

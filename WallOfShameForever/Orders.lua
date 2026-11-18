@@ -2,7 +2,9 @@
 -- Guildmates order crafts on Discord; the companion writes this account's orders into a separate
 -- addon, WallOfShameForever_Commandes, read at login (only a /reload brings new ones):
 --   WallOfShameForever_Orders = { updated = <unix>, orders = { { id, artisan = "Name-Realm",
---       buyer = { name, realm, class, level }, itemId, itemName, qty, note, createdAt }, ... } }
+--       buyer = { name, realm, class, level }, itemId, itemName, qty, note, createdAt,
+--       reply, reagents = { { itemId, name, qty }, ... } }, ... } }
+--   reply and reagents: companion 0.7.1 and later (reagents: the materials of the whole order)
 -- The artisan ticks an order "done" or "refused" in our window; the answer goes to the companion
 -- like the other events (strip in real time, outbox on /reload or logout):
 --   2|O|id|name|realm|guild|level|class|time|battletag|order|status|reason
@@ -71,6 +73,20 @@ function Orders.ReadSource(source)
         if (idType == "string" or idType == "number") and type(o.artisan) == "string" then
             local buyer = type(o.buyer) == "table" and o.buyer or {}
             local qty = math.floor(tonumber(o.qty) or 1)
+            -- materials of the whole order: nil = a companion older than 0.7.1 (it does not pass
+            -- them), {} = the bot does not know the recipe
+            local reagents
+            if type(o.reagents) == "table" then
+                reagents = {}
+                for _, r in ipairs(o.reagents) do
+                    local id = type(r) == "table" and tonumber(r.itemId)
+                    local count = type(r) == "table" and tonumber(r.qty)
+                    if id and count and count > 0 then
+                        reagents[#reagents + 1] = { itemId = id, qty = math.floor(count),
+                            name = type(r.name) == "string" and r.name ~= "" and r.name or nil }
+                    end
+                end
+            end
             list[#list + 1] = {
                 id = tostring(o.id),
                 artisan = o.artisan,
@@ -84,11 +100,47 @@ function Orders.ReadSource(source)
                 itemName = type(o.itemName) == "string" and o.itemName ~= "" and o.itemName or nil,
                 qty = qty > 0 and qty or 1,
                 note = type(o.note) == "string" and o.note or "",
+                reply = type(o.reply) == "string" and o.reply or "",
+                reagents = reagents,
                 createdAt = tonumber(o.createdAt) or 0,
             }
         end
     end
     return list
+end
+
+-- Materials of these orders added up: { { itemId, name, qty } } by name; unknown = true when an
+-- order came without its materials (companion older than 0.7.1)
+function Orders.Materials(orders)
+    local list, byId, unknown = {}, {}, false
+    for _, o in ipairs(orders or {}) do
+        if type(o.reagents) ~= "table" then
+            unknown = true
+        else
+            for _, r in ipairs(o.reagents) do
+                local m = byId[r.itemId]
+                if not m then
+                    m = { itemId = r.itemId, name = r.name, qty = 0 }
+                    byId[r.itemId] = m
+                    list[#list + 1] = m
+                end
+                m.qty = m.qty + r.qty
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        local an, bn = a.name or "", b.name or ""
+        if an ~= bn then return an < bn end
+        return a.itemId < b.itemId
+    end)
+    return list, unknown
+end
+
+-- How many of an item the player has, bags and bank (the bank as last seen)
+function Orders.Owned(itemId)
+    if not GetItemCount then return 0 end
+    local ok, count = pcall(GetItemCount, itemId, true)
+    return ok and tonumber(count) or 0
 end
 
 -- Answered orders stay hidden until the companion's file no longer lists them
@@ -295,13 +347,20 @@ local ICON_READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
 local ICON_REFUSE = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14:14|t "
 local TITLE_FONT = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\LilitaOne.ttf"
 
-local WIDTH, HEIGHT = 480, 560
+-- Two columns: the orders on the left, their materials on the right
+local WIDTH, HEIGHT = 790, 600
 local HEADER_H, ITEM_H = 28, 46
 local LIST_TOP, LIST_BOTTOM = 98, 46 -- list area inside the window
+local LIST_W = 480                   -- orders column
+local MATS_GAP = 10                  -- between the two columns
 local CAPACITY = HEIGHT - LIST_TOP - LIST_BOTTOM - 12
-local ROW_W = WIDTH - 24 - 12 -- list width minus its padding
+local ROW_W = LIST_W - 12 -- list width minus its padding
 local BTN_DONE_W, BTN_REFUSE_W = 74, 84
 local NAME_W = ROW_W - 60 - BTN_DONE_W - BTN_REFUSE_W - 22
+local MAT_H = 24                     -- one material line
+local MATS_HEAD, MATS_FOOT = 64, 34  -- materials column: title and buttons, missing count
+local MAT_ROWS = math.floor((HEIGHT - LIST_TOP - LIST_BOTTOM - MATS_HEAD - MATS_FOOT) / MAT_H)
+local OK_COLOR, SHORT_COLOR = "|cff4fd04f", "|cffff6060"
 
 local function Backdrop(frame, bg, border, edgeSize)
     if not frame.SetBackdrop then return end
@@ -393,8 +452,9 @@ end
 -------------------------------------------------------------------------------
 
 local win, popup
-local headerRows, itemRows = {}, {}
-local state = { page = 1 }
+local headerRows, itemRows, matRows = {}, {}, {}
+-- page: orders page; buyer: buyer group shown in the materials column; mats: "buyer" or "total"
+local state = { page = 1, mats = "buyer" }
 Orders.ui = state -- for the tests
 
 local function Scope()
@@ -418,6 +478,25 @@ local function NewHeaderRow()
     r.info:SetTextColor(0.7, 0.7, 0.7)
     r.age = r:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     r.age:SetPoint("RIGHT", -10, 0)
+    -- a click shows this buyer's materials in the right column; gold mark on the one shown
+    r.mark = r:CreateTexture(nil, "OVERLAY")
+    r.mark:SetPoint("TOPLEFT", 0, -3)
+    r.mark:SetPoint("BOTTOMLEFT", 0, 3)
+    r.mark:SetWidth(3)
+    r.mark:SetColorTexture(GOLD[1], GOLD[2], GOLD[3], 1)
+    r:EnableMouse(true)
+    r:SetScript("OnMouseUp", function(self)
+        if not self.group then return end
+        ClickSound()
+        state.buyer, state.mats = self.group.key, "buyer"
+        Refresh()
+    end)
+    r:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText(L("orders_buyer_click"), 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
     return r
 end
 
@@ -434,6 +513,21 @@ local function ShowItemTooltip(row)
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(L("orders_note"), GOLD[1], GOLD[2], GOLD[3])
         GameTooltip:AddLine(o.note, 0.85, 0.85, 0.85, true)
+    end
+    if o.reply ~= "" then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L("orders_reply"), GOLD[1], GOLD[2], GOLD[3])
+        GameTooltip:AddLine(o.reply, 0.62, 0.83, 1, true)
+    end
+    if type(o.reagents) == "table" and #o.reagents > 0 then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L("orders_materials_for", o.qty), GOLD[1], GOLD[2], GOLD[3])
+        for _, r in ipairs(o.reagents) do
+            local name = ItemInfo(r.itemId) or r.name or L("orders_unknown_item", r.itemId)
+            local have = Orders.Owned(r.itemId)
+            GameTooltip:AddDoubleLine(name, (have >= r.qty and OK_COLOR or SHORT_COLOR) .. have .. " / " .. r.qty .. "|r",
+                0.85, 0.85, 0.85)
+        end
     end
     GameTooltip:Show()
 end
@@ -491,6 +585,8 @@ end
 
 local function FillHeader(r, entry)
     local buyer = entry.header.buyer
+    r.group = entry.header
+    r.mark:SetShown(state.mats == "buyer" and state.buyer == entry.header.key)
     r.bar:SetVertexColor(1, 1, 1, 0.35)
     local c = buyer.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[buyer.class]
     if c then r.bar:SetVertexColor(c.r, c.g, c.b, 0.45) end
@@ -530,7 +626,98 @@ local function FillItem(r, entry, index)
     r.refuse.label:SetText(ICON_REFUSE .. L("orders_refuse"))
 end
 
-local function SetScopeButton(b, active)
+local SetScopeButton -- below
+
+-- One line of the materials column: icon, name in its quality color, "have / needed"
+local function NewMatRow()
+    local r = CreateFrame("Frame", nil, win.mats)
+    r:SetHeight(MAT_H)
+    r:EnableMouse(true)
+    r.iconFrame = CreateFrame("Frame", nil, r)
+    r.iconFrame:SetSize(20, 20)
+    r.iconFrame:SetPoint("LEFT", 8, 0)
+    r.icon = r.iconFrame:CreateTexture(nil, "ARTWORK")
+    r.icon:SetAllPoints()
+    r.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    r.count = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.count:SetPoint("RIGHT", -8, 0)
+    r.count:SetJustifyH("RIGHT")
+    r.name = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    r.name:SetPoint("LEFT", r.iconFrame, "RIGHT", 7, 0)
+    r.name:SetPoint("RIGHT", r.count, "LEFT", -6, 0)
+    r.name:SetJustifyH("LEFT")
+    r.name:SetWordWrap(false)
+    r:SetScript("OnEnter", function(self)
+        if not self.itemId then return end
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        if not (GameTooltip.SetItemByID and pcall(GameTooltip.SetItemByID, GameTooltip, self.itemId)) then
+            GameTooltip:SetText(self.name:GetText() or "?")
+        end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(L("orders_have_hint"), 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+    end)
+    r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    return r
+end
+
+-- Materials column: the selected buyer's orders, or all of them (Total)
+local function RefreshMaterials(groups, pending)
+    local group
+    for _, g in ipairs(groups) do
+        if g.key == state.buyer then group = g end
+    end
+    if not group then
+        group = groups[1]
+        state.buyer = group and group.key or nil
+    end
+    local showTotal = state.mats == "total" or not group
+    local list, unknown = Orders.Materials(showTotal and pending or group.orders)
+
+    win.matsBuyer.label:SetText(group and ns.ClassColored(group.buyer.name, group.buyer.class) or "-")
+    SetScopeButton(win.matsBuyer, not showTotal)
+    SetScopeButton(win.matsTotal, showTotal)
+    if group then win.matsBuyer:Enable() else win.matsBuyer:Disable() end
+    win.matsTitle:SetText(L("orders_materials"))
+    win.matsTotal.label:SetText(L("orders_materials_total"))
+
+    for _, r in ipairs(matRows) do r:Hide() end
+    local shown = math.min(#list, #list > MAT_ROWS and MAT_ROWS - 1 or MAT_ROWS)
+    local missing = 0
+    for i, m in ipairs(list) do
+        local have = Orders.Owned(m.itemId)
+        missing = missing + math.max(0, m.qty - have)
+        if i <= shown then
+            local r = matRows[i] or NewMatRow()
+            matRows[i] = r
+            local name, quality, icon = ItemInfo(m.itemId)
+            r.itemId = m.itemId
+            r.icon:SetTexture(icon or UNKNOWN_ICON)
+            r.name:SetText(name or m.name or L("orders_unknown_item", m.itemId))
+            r.name:SetTextColor(QualityColor(quality))
+            r.count:SetText((have >= m.qty and OK_COLOR or SHORT_COLOR) .. have .. " / " .. m.qty .. "|r")
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", win.mats, "TOPLEFT", 4, -(MATS_HEAD + (i - 1) * MAT_H))
+            r:SetPoint("TOPRIGHT", win.mats, "TOPRIGHT", -4, -(MATS_HEAD + (i - 1) * MAT_H))
+            r:Show()
+        end
+    end
+    win.matsMore:SetText(#list > shown and L("orders_materials_more", #list - shown) or "")
+
+    if #pending == 0 then
+        win.matsFoot:SetText("")
+    elseif unknown then
+        win.matsFoot:SetText("|cffffd200" .. L("orders_materials_update") .. "|r")
+    elseif #list == 0 then
+        win.matsFoot:SetText(L("orders_materials_none"))
+    elseif missing == 0 then
+        win.matsFoot:SetText(OK_COLOR .. L("orders_materials_ok") .. "|r")
+    else
+        win.matsFoot:SetText(SHORT_COLOR .. L("orders_materials_missing", missing) .. "|r")
+    end
+end
+
+SetScopeButton = function(b, active)
     b.active = active
     local border = active and GOLD or GREY
     if b.SetBackdropBorderColor then b:SetBackdropBorderColor(border[1], border[2], border[3], border[4]) end
@@ -548,7 +735,9 @@ Refresh = function()
     SetScopeButton(win.scopeAccount, Scope() == "account")
 
     local pending = Orders.List(Scope())
-    local pages = Orders.Paginate(Orders.Group(pending), CAPACITY, HEADER_H, ITEM_H)
+    local groups = Orders.Group(pending)
+    RefreshMaterials(groups, pending) -- first: it picks the buyer whose header gets the gold mark
+    local pages = Orders.Paginate(groups, CAPACITY, HEADER_H, ITEM_H)
     state.pages = pages
     state.page = math.max(1, math.min(state.page, #pages))
 
@@ -655,11 +844,45 @@ local function CreateWindow()
     win.scopeAccount = MakeButton(win, 150, GREY, function() SetScope("account") end)
     win.scopeAccount:SetPoint("LEFT", win.scopeChar, "RIGHT", 6, 0)
 
-    -- list
+    -- list (left column)
     win.list = CreateFrame("Frame", nil, win, "BackdropTemplate")
     win.list:SetPoint("TOPLEFT", 12, -LIST_TOP)
-    win.list:SetPoint("BOTTOMRIGHT", -12, LIST_BOTTOM)
+    win.list:SetPoint("BOTTOMLEFT", 12, LIST_BOTTOM)
+    win.list:SetWidth(LIST_W)
     Backdrop(win.list, LIST_BG, DIM_GOLD, 12)
+
+    -- materials (right column): the selected buyer's or the total, "have / needed"
+    win.mats = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    win.mats:SetPoint("TOPLEFT", win.list, "TOPRIGHT", MATS_GAP, 0)
+    win.mats:SetPoint("BOTTOMRIGHT", -12, LIST_BOTTOM)
+    Backdrop(win.mats, LIST_BG, DIM_GOLD, 12)
+    win.matsTitle = win.mats:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    win.matsTitle:SetPoint("TOPLEFT", 12, -10)
+    local matsWidth = WIDTH - 24 - LIST_W - MATS_GAP
+    local half = math.floor((matsWidth - 30) / 2)
+    win.matsBuyer = MakeButton(win.mats, half, GREY, function()
+        state.mats = "buyer"
+        Refresh()
+    end)
+    win.matsBuyer:SetPoint("TOPLEFT", 10, -32)
+    win.matsTotal = MakeButton(win.mats, half, GREY, function()
+        state.mats = "total"
+        Refresh()
+    end)
+    win.matsTotal:SetPoint("LEFT", win.matsBuyer, "RIGHT", 8, 0)
+    win.matsTotal.label:SetText(L("orders_materials_total"))
+    local matsLine = Line(win.mats, "ARTWORK", DIM_GOLD)
+    matsLine:SetPoint("TOPLEFT", 8, -(MATS_HEAD - 6))
+    matsLine:SetPoint("TOPRIGHT", -8, -(MATS_HEAD - 6))
+    win.matsMore = win.mats:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    win.matsMore:SetPoint("TOPLEFT", 14, -(MATS_HEAD + (MAT_ROWS - 1) * MAT_H + 6))
+    local footLineMats = Line(win.mats, "ARTWORK", DIM_GOLD)
+    footLineMats:SetPoint("BOTTOMLEFT", 8, MATS_FOOT)
+    footLineMats:SetPoint("BOTTOMRIGHT", -8, MATS_FOOT)
+    win.matsFoot = win.mats:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    win.matsFoot:SetPoint("BOTTOMLEFT", 12, 12)
+    win.matsFoot:SetPoint("BOTTOMRIGHT", -12, 12)
+    win.matsFoot:SetJustifyH("LEFT")
 
     win.empty = CreateFrame("Frame", nil, win.list)
     win.empty:SetSize(360, 140)
@@ -695,7 +918,7 @@ local function CreateWindow()
         return b
     end
     win.next = PageButton("Next")
-    win.next:SetPoint("BOTTOMRIGHT", -14, 10)
+    win.next:SetPoint("BOTTOMRIGHT", win, "BOTTOMLEFT", 12 + LIST_W - 2, 10) -- under the orders column
     win.pageText = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.pageText:SetPoint("RIGHT", win.next, "LEFT", -6, 0)
     win.prev = PageButton("Prev")
@@ -1006,7 +1229,8 @@ end
 
 local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_LOGIN")
-for _, event in ipairs({ "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT" }) do
+-- BAG_UPDATE_DELAYED: materials bought, looted or crafted, the "have / needed" counts follow
+for _, event in ipairs({ "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT", "BAG_UPDATE_DELAYED" }) do
     pcall(events.RegisterEvent, events, event)
 end
 events:SetScript("OnEvent", function(_, event, itemId)
@@ -1023,6 +1247,8 @@ events:SetScript("OnEvent", function(_, event, itemId)
         if source then Orders.Prune(db.ordersHandled, source) end
         ApplyMinimapButton()
         C_Timer.After(8, Orders.Notify) -- after the loading screen and the login chat lines
+    elseif event == "BAG_UPDATE_DELAYED" then
+        if win and win:IsShown() then RefreshSoon() end
     elseif itemId and itemWaiting[itemId] then
         itemWaiting[itemId] = nil
         RefreshSoon()

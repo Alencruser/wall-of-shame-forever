@@ -172,7 +172,10 @@ disappears from the list once reported or cancelled.
   { "id": "3f9a1c27", "artisan": "Grumbar-Forever",
     "buyer": { "name": "Thrall", "realm": "Forever", "class": "SHAMAN", "level": 42 },
     "itemId": 2848, "itemName": "Bronze Shortsword", "qty": 2,
-    "note": "I bring the bars", "createdAt": 1793702383 } ] }
+    "note": "I bring the bars", "reply": "Ready on Friday",
+    "reagents": [ { "itemId": 2841, "name": "Bronze Bar", "qty": 8 },
+                  { "itemId": 2880, "name": "Weak Flux", "qty": 4 } ],
+    "createdAt": 1793702383 } ] }
 ```
 
 - `id`: 8 hex characters, unique in the guild; `artisan`: the character the order is for
@@ -182,6 +185,10 @@ disappears from the list once reported or cancelled.
   `itemName`: in French, as shown on Discord
 - `qty`: 1 to 99; `note`: the buyer's note, `""` if none (200 characters at most);
   `createdAt`: Unix timestamp of the order
+- `reply`: the artisan's answer to the buyer (set on the orders website), `""` if none
+- `reagents`: the materials of the **whole** order (one craft's materials × the number of crafts;
+  a recipe that makes several items per craft counts once per craft), `name` in French; `[]` when
+  the bot does not know the recipe. Older bots send neither `reply` nor `reagents`
 - poll every 2 minutes or so; the bot only logs a request when its answer changes
 
 ## Response

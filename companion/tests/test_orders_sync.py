@@ -104,6 +104,24 @@ class RequestTest(unittest.TestCase):
         b = orders.clean_orders({"orders": [dict(ORDER, id="o1", createdAt=1), ORDER]})
         self.assertEqual([o["id"] for o in orders.merge([a, b])], ["o1", "o2"])
 
+    def test_reagents_and_reply(self):
+        raw = dict(ORDER, reply="Prête vendredi", reagents=[
+            {"itemId": 2318, "name": "Cuir léger", "qty": 8, "extra": 1},
+            {"itemId": "2320", "name": "Fil grossier", "qty": "2"},  # numbers as text: numbers
+            {"itemId": None, "name": "?", "qty": 1},  # no item id: dropped
+            "x",
+        ])
+        order = orders.clean_orders({"orders": [raw]})[0]
+        self.assertEqual(order["reply"], "Prête vendredi")
+        self.assertEqual(order["reagents"], [{"itemId": 2318, "name": "Cuir léger", "qty": 8},
+                                             {"itemId": 2320, "name": "Fil grossier", "qty": 2}])
+        # an older bot sends neither: no reply, no materials (the addon says so)
+        old = orders.clean_orders({"orders": [ORDER]})[0]
+        self.assertEqual((old["reply"], old["reagents"]), (None, []))
+        too_many = orders.clean_orders({"orders": [dict(ORDER, reagents=[{"itemId": i, "name": "a", "qty": 1}
+                                                                          for i in range(1, 40)])]})[0]
+        self.assertEqual(len(too_many["reagents"]), orders.MAX_REAGENTS)
+
 
 def make_game(test, toc="## Interface: 11508\n## Title: Wall of Shame Forever\nCore.lua\n"):
     game = tempfile.mkdtemp()
@@ -135,6 +153,14 @@ class WriterTest(unittest.TestCase):
                          ORDER["itemName"])
         self.assertEqual((order.qty, order.buyer.level, order.note), (2, 30, ""))
         self.assertIsNone(data.orders[2])
+
+    def test_lua_reagents(self):
+        order = orders.clean_orders({"orders": [dict(ORDER, reagents=[{"itemId": 2318, "name": "Cuir", "qty": 8}])]})[0]
+        orders.write_orders(self.game, [order], now=1000)
+        lua = lupa.LuaRuntime()
+        lua.execute(self.read(orders.LUA_FILE))
+        reagent = lua.globals().WallOfShameForever_Orders.orders[1].reagents[1]
+        self.assertEqual((reagent.itemId, reagent.qty), (2318, 8))
 
     def test_escaping(self):
         self.assertEqual(orders.lua_string('a"b\\c\nd\r\te\x01|é'), '"a\\"b\\\\c\\nd\\r\\te\\001|é"')

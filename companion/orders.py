@@ -31,9 +31,12 @@ LUA_FILE = "Commandes.lua"
 TOC_FILE = FOLDER + ".toc"
 DEFAULT_INTERFACE = "16001"
 GLOBAL = "WallOfShameForever_Orders"
-ORDER_KEYS = ("id", "artisan", "buyer", "itemId", "itemName", "qty", "note", "createdAt")
+ORDER_KEYS = ("id", "artisan", "buyer", "itemId", "itemName", "qty", "note", "reply", "reagents",
+              "createdAt")
 BUYER_KEYS = ("name", "realm", "class", "level")
+REAGENT_KEYS = ("itemId", "name", "qty")
 NUMBER_KEYS = ("itemId", "qty", "createdAt", "level")
+MAX_REAGENTS = 20  # a recipe has 6 at most: anything longer is not what the bot sends
 
 IDENTITY_RE = re.compile(r'\["orderIdentity"\]\s*=\s*\{')
 BATTLETAG_RE = re.compile(r'\["battletag"\]\s*=\s*"((?:[^"\\]|\\.)*)"')
@@ -134,6 +137,14 @@ def clean_orders(data):
             if key == "buyer":
                 buyer = raw.get("buyer") if isinstance(raw.get("buyer"), dict) else {}
                 order["buyer"] = {k: _clean(buyer.get(k), k in NUMBER_KEYS) for k in BUYER_KEYS}
+            elif key == "reagents":
+                # materials of the whole order (bot 2026-11 and later); none from an older bot
+                reagents = raw.get("reagents") if isinstance(raw.get("reagents"), list) else []
+                order["reagents"] = [
+                    {k: _clean(r.get(k), k in NUMBER_KEYS) for k in REAGENT_KEYS}
+                    for r in reagents[:MAX_REAGENTS]
+                    if isinstance(r, dict) and isinstance(_clean(r.get("itemId"), True), int)
+                ]
             else:
                 order[key] = _clean(raw.get(key), key in NUMBER_KEYS)
         orders.append(order)

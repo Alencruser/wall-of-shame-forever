@@ -16,6 +16,14 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.2 + Compagnon 0.7.1
+
+- **Fenêtre des commandes plus grande** : vos commandes à gauche, leurs **composants** à droite. Cliquez le nom d'un acheteur pour ses composants, ou **Total** pour toutes vos commandes
+- **Ce que vous avez déjà** : chaque composant affiche *possédés / nécessaires* (sacs et banque), en vert quand vous en avez assez, en rouge sinon, avec le nombre d'objets qui manquent. Ça se met à jour quand vous ramassez ou achetez
+- Au survol d'une commande : ses composants et la réponse que vous avez laissée à l'acheteur sur le site des commandes
+- **Métiers** : quelques corrections (niveaux envoyés même après avoir réactivé le partage, anciennes recettes oubliées quand un métier est désappris)
+- **Mettez à jour le compagnon en 0.7.1** (menu du compagnon > **Check for updates**) : c'est lui qui apporte les composants. Addon : mettez-le à jour depuis CurseForge
+
 ## Addon v0.6.1
 
 - **Niveaux de métiers à jour sans rien ouvrir** : Pêche, Minage, Herboristerie, Dépeçage et les autres suivent à la connexion, à la déconnexion et à chaque point gagné. Plus besoin d'ouvrir une fenêtre de métier pour mettre à jour un niveau (les recettes, elles, se relisent toujours à l'ouverture du métier)

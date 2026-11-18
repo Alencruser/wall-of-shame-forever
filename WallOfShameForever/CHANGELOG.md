@@ -1,5 +1,17 @@
 # Wall of Shame Forever
 
+## v0.6.2 (2026-11-18)
+
+- Craft orders window twice as wide: your orders on the left, their materials on the right. Click a
+  buyer's name for their materials, or Total for all your orders. Each material shows how many you
+  have against how many are needed (bags and bank), green when you have enough, red when you are
+  short, with the number of items still missing. The counts follow your bags as you loot or buy.
+  Hover an order for its own materials and the reply you gave the buyer on the orders website
+  (needs companion 0.7.1, which brings the materials)
+- Professions: a profession level change made while Discord sharing was off is now sent once it is
+  back on; a new connection code sends your professions again; unlearning every profession, or
+  unlearning one and learning it again, no longer leaves old recipes behind
+
 ## v0.6.1 (2026-11-17)
 
 - Profession levels without opening anything: fishing, gathering and the others are read at login,

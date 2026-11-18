@@ -88,6 +88,58 @@ class ProfessionLevelsTest(unittest.TestCase):
         self.run_timers()
         self.assertEqual(self.readings(), [])
 
+    def test_change_made_while_discord_off_is_sent_later(self):
+        self.a.db.discord = False
+        self.run_timers()
+        self.state.profs[2].level = 150
+        self.a.g.Fire("SKILL_LINES_CHANGED")
+        self.run_timers()
+        self.assertEqual(self.readings(), [])
+        self.a.db.discord = True
+        self.a.g.Fire("SKILL_LINES_CHANGED")  # same levels as the last reading, but never sent
+        self.run_timers()
+        self.assertEqual(self.readings()[0][356]["level"], 150)
+
+    def test_new_connection_code_sends_again(self):
+        self.run_timers()
+        self.a.db.outbox = self.a.lua.table()
+        self.a.lua.execute('function GetGuildInfoText() return "Code companion: swf1.other" end '
+                           'function GetNumGuildMembers() return 0 end')
+        self.a.g.Fire("GUILD_ROSTER_UPDATE")
+        self.run_timers()
+        self.assertEqual(len(self.readings()), 1)
+
+    def test_all_professions_unlearned_are_forgotten(self):
+        self.run_timers()
+        self.state.profs = self.a.lua.table()
+        self.a.g.Fire("SKILL_LINES_CHANGED")
+        self.run_timers()
+        self.assertEqual(self.readings(), [{}])
+
+    def test_empty_list_right_after_login_forgets_nothing(self):
+        fresh = Addon(orders=[])
+        fresh.lua.execute(PROF_STUBS)
+        fresh.login()
+        fresh.db.discord, fresh.db.connection = True, "swf1.test"
+        fresh.g.STATE.profs = fresh.lua.table()
+        store = fresh.lua.table()
+        store[165] = fresh.lua.table()
+        store[165].level, store[165].max, store[165].name = 160, 225, "Travail du cuir"
+        fresh.db.professions = fresh.lua.table()
+        fresh.db.professions["Chamy Chan-CAMWOWEU5Realm2PvP"] = store
+        for _ in range(3):
+            fresh.g.RunTimers()
+        self.assertIsNotNone(fresh.db.professions["Chamy Chan-CAMWOWEU5Realm2PvP"][165])
+
+    def test_relearned_profession_loses_old_recipes(self):
+        self.run_timers()
+        store = self.a.db.professions["Chamy Chan-CAMWOWEU5Realm2PvP"]
+        store[165].recipes = "2152=3=Light Armor Kit"
+        self.state.profs[1].level = 1
+        self.a.g.Fire("SKILL_LINES_CHANGED")
+        self.run_timers()
+        self.assertIsNone(self.readings()[0][165]["recipes"])
+
 
 if __name__ == "__main__":
     unittest.main()

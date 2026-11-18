@@ -870,7 +870,12 @@ local function MyProfessions()
 end
 
 -- Level of every profession (no window needed); professions unlearned since are forgotten, but only
--- when the game answered for every profession (right after login it may not have them yet)
+-- when the game answered for every profession (right after login it may not have them yet). An empty
+-- list is trusted only once the game listed professions this session, or a minute after login: a
+-- character who unlearned every profession then forgets them too.
+local professionsListed -- the game gave a full list of professions this session
+local loginAt
+
 local function ReadProfessionLevels(store)
     if type(GetProfessions) ~= "function" then return end
     local present, indexes, read = {}, 0, 0
@@ -880,11 +885,15 @@ local function ReadProfessionLevels(store)
         if skillLine then
             read = read + 1
             local entry = store[skillLine] or {}
+            -- level lower than the one kept: unlearned then learned again, the old recipes are gone
+            if entry.level and level and level < entry.level then entry.recipes = nil end
             entry.name, entry.level, entry.max = name, level, max
             store[skillLine], present[skillLine] = entry, true
         end
     end
-    if indexes == 0 or read < indexes then return end
+    if read < indexes then return end
+    if indexes == 0 and not (professionsListed or (loginAt and time() - loginAt >= 60)) then return end
+    if indexes > 0 then professionsListed = true end
     for skillLine in pairs(store) do
         if not present[skillLine] then store[skillLine] = nil end
     end
@@ -901,15 +910,27 @@ local function ProfessionsPayload(store)
         classFile or "", time(), battleTag, table.concat(list, ";") }, "|")
 end
 
--- Only the latest reading of this character waits in the outbox
+-- The levels as a text, to know whether they changed since the last reading queued
+local function LevelsSignature(store)
+    local list = {}
+    for skillLine, p in pairs(store) do list[#list + 1] = skillLine .. ":" .. (p.level or 0) .. "/" .. (p.max or 0) end
+    table.sort(list)
+    return table.concat(list, ",")
+end
+
+-- Only the latest reading of this character waits in the outbox. The levels sent are remembered: a
+-- change made while nothing could be queued (Discord off, no code yet) is sent later.
 local function QueueProfessions(store)
     if not (db.discord and db.connection) then return end
     local name, realm = Identity()
-    local prefix = name .. "-" .. realm .. ":P:"
+    local key = name .. "-" .. realm
+    local prefix = key .. ":P:"
     for i = #db.outbox, 1, -1 do
         if OutboxId(db.outbox[i]):sub(1, #prefix) == prefix then table.remove(db.outbox, i) end
     end
     AddToOutbox(ProfessionsPayload(store))
+    db.professionsSent = db.professionsSent or {}
+    db.professionsSent[key] = LevelsSignature(store)
 end
 
 -- The open profession window: its known recipes, and every profession's level
@@ -940,30 +961,32 @@ local function ReadOpenProfession()
 end
 
 -- Levels only, no window needed (fishing and gathering have no recipe window): at login, at logout
--- and when a skill changes. A new reading is queued only when a level changed; the known recipes
--- stay as they are (read when a profession window opens).
+-- and when a skill changes. A new reading is queued only when the levels differ from the last ones
+-- queued; the known recipes stay as they are (read when a profession window opens).
 local levelsPending
 
 local function RefreshProfessionLevels()
     levelsPending = nil
     if type(GetProfessions) ~= "function" or not db then return end
     local store = MyProfessions()
-    local before = {}
-    for skillLine, p in pairs(store) do before[skillLine] = (p.level or 0) .. "/" .. (p.max or 0) end
     ReadProfessionLevels(store)
-    local changed = false
-    for skillLine, p in pairs(store) do
-        if before[skillLine] ~= (p.level or 0) .. "/" .. (p.max or 0) then changed = true end
-        before[skillLine] = nil
-    end
-    if next(before) then changed = true end -- a profession unlearned
-    if changed then QueueProfessions(store) end
+    local name, realm = Identity()
+    local sent = db.professionsSent and db.professionsSent[name .. "-" .. realm]
+    if sent ~= LevelsSignature(store) then QueueProfessions(store) end
 end
 
 local function ScheduleProfessionLevels(delay)
     if levelsPending then return end
     levelsPending = true
     C_Timer.After(delay or 1, RefreshProfessionLevels)
+end
+
+-- New connection code (another bot or Discord server): everything is sent again
+local function ResendProfessions()
+    if not db.professionsSent then return end
+    local name, realm = Identity()
+    db.professionsSent[name .. "-" .. realm] = nil
+    ScheduleProfessionLevels()
 end
 
 local function OnTradeSkillEvent(event)
@@ -1366,6 +1389,7 @@ local function ReadConnection()
         db.connection = code
         if first and db.discord then Print(L("discord_ready")) end
         QueueLevel(UnitLevel("player"))
+        ResendProfessions()
     end
 end
 
@@ -1534,6 +1558,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         end
     elseif event == "PLAYER_LOGIN" then
         playerGUID = UnitGUID("player")
+        loginAt = time()
         local name, realm = MyNameAndRealm()
         playerName = realm ~= "" and (name .. "-" .. realm) or name
         if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
@@ -1974,7 +1999,10 @@ local function SetConnection(code)
         return
     end
     SetGuildInfoText(newInfo)
-    db.connection = code
+    if code ~= db.connection then
+        db.connection = code
+        ResendProfessions()
+    end
     Print(L("code_saved_guild"))
 end
 
