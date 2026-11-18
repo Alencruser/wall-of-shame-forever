@@ -33,6 +33,7 @@ function methods.Hide(self)
     if was and self._scripts.OnHide then self._scripts.OnHide(self) end
 end
 function methods.IsShown(self) return self._shown end
+function methods.SetShown(self, shown) if shown then self:Show() else self:Hide() end end
 function methods.Enable(self) self._enabled = true end
 function methods.Disable(self) self._enabled = false end
 function methods.IsEnabled(self) return self._enabled ~= false end
@@ -455,3 +456,78 @@ class MaterialsTest(unittest.TestCase):
         win = a.g.WallOfShameForeverOrders
         self.assertIn("Mets à jour le compagnon", win.matsFoot._text)
 
+
+
+def placed(pid, artisan="Grumbar-Forever", status="pending", created=1, updated=None, **kw):
+    p = {"id": pid, "artisan": artisan, "artisanClass": "WARRIOR", "buyer": "Chamy Chan-CAMWOWEU5Realm2PvP",
+         "status": status, "reason": "", "itemId": 2152, "itemName": "Light Armor Kit", "qty": 2, "note": "",
+         "reply": "", "reagents": [{"itemId": 2318, "name": "Cuir léger", "qty": 8}], "createdAt": created,
+         "updatedAt": updated or created}
+    p.update(kw)
+    return p
+
+
+class PlacedTest(unittest.TestCase):
+    """"My orders" tab (v0.6.3): the player's own orders, a shopping list, auction house search."""
+
+    def addon(self, placed_list):
+        return Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": placed_list}).login()
+
+    def open_placed(self, a):
+        a.orders.Toggle(True)
+        win = a.g.WallOfShameForeverOrders
+        win.tabPlaced.GetScript(win.tabPlaced, "OnClick")(win.tabPlaced)
+        return win
+
+    def test_read_and_group(self):
+        a = self.addon([
+            placed("d1", artisan="Liandra-Forever", status="done", created=1, updated=50, reply="Prête"),
+            placed("p2", created=20),
+            placed("p1", created=10),
+            placed("r1", status="refused", created=5, updated=40, reason="Pas de cuir"),
+            placed("x", status="cancelled"),  # never shown
+        ])
+        mine = a.orders.Placed()
+        self.assertEqual(len(mine), 4)
+        groups = a.orders.GroupPlaced(mine)
+        # Grumbar has pending orders: first; inside, pending oldest first, then the refused one
+        self.assertEqual([g.label for g in groups.values()], ["Grumbar", "Liandra"])
+        self.assertEqual([o.id for o in groups[1].orders.values()], ["p1", "p2", "r1"])
+        # materials: only what is still pending (2 orders x 8 leather)
+        total, unknown = a.orders.Materials(mine)
+        self.assertEqual([(m.itemId, m.qty) for m in total.values()], [(2318, 16)])
+
+    def test_window_tab(self):
+        a = self.addon([placed("p1"), placed("d1", artisan="Liandra-Forever", status="done", created=2)])
+        a.lua.execute("function GetItemCount(id) return 4 end")
+        win = self.open_placed(a)
+        self.assertEqual(a.db.ordersTab, "placed")
+        self.assertEqual(win.tabPlaced.label._text, "Mes commandes (1)")
+        self.assertFalse(win.scopeChar.IsShown(win.scopeChar))  # no scope on this tab
+        self.assertEqual(win.matsTitle._text, "Liste de courses")
+        self.assertIn("Il manque 4 objet(s)", win.matsFoot._text)
+        self.assertEqual(win.total._text, "1 commande(s) en cours")
+        # the done order shows where to pick it up
+        notes = [r.note._text for r in a.lua_list(a.g.STATE.frames)
+                 if a.lua.eval("function(f) return rawget(f, 'statusText') end")(r)]
+        self.assertTrue(any("à récupérer chez Liandra" in (n or "") for n in notes))
+        # back to the craft tab: buttons again, scope shown
+        win.tabCraft.GetScript(win.tabCraft, "OnClick")(win.tabCraft)
+        self.assertEqual(a.db.ordersTab, "craft")
+        self.assertTrue(win.scopeChar.IsShown(win.scopeChar))
+
+    def test_auction_search(self):
+        a = self.addon([placed("p1")])
+        self.assertFalse(a.orders.SearchAuction("Cuir léger"))  # auction house closed
+        a.lua.execute("""
+            AuctionFrame = CreateFrame("Frame")
+            BrowseName = CreateFrame("EditBox")
+            function AuctionFrameBrowse_Search() STATE.ahSearch = BrowseName:GetText() end
+        """)
+        self.assertTrue(a.orders.SearchAuction("Cuir léger"))
+        self.assertEqual(a.g.STATE.ahSearch, "Cuir léger")
+
+    def test_older_companion(self):
+        a = Addon(orders=[order("a")]).login()  # no "placed": companion older than 0.7.2
+        win = self.open_placed(a)
+        self.assertIn("Mets à jour le compagnon (0.7.2)", win.empty.hint._text)

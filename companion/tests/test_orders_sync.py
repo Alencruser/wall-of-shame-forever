@@ -122,6 +122,21 @@ class RequestTest(unittest.TestCase):
                                                                           for i in range(1, 40)])]})[0]
         self.assertEqual(len(too_many["reagents"]), orders.MAX_REAGENTS)
 
+    def test_placed(self):
+        raw = {"orders": [], "placed": [
+            {"id": "p1", "artisan": "Grumbar-Forever", "artisanClass": "WARRIOR", "buyer": "Chamy-Forever",
+             "status": "done", "reason": "", "itemId": 2308, "itemName": "Cape", "qty": 2, "note": "",
+             "reply": "Prête", "reagents": [{"itemId": 2318, "name": "Cuir", "qty": 8}],
+             "createdAt": 1, "updatedAt": "5"},
+            {"id": "x", "status": "cancelled"},  # never shown
+            {"id": "", "status": "pending"},
+        ]}
+        placed = orders.clean_placed(raw)
+        self.assertEqual([p["id"] for p in placed], ["p1"])
+        self.assertEqual((placed[0]["status"], placed[0]["updatedAt"], placed[0]["reagents"][0]["qty"]),
+                         ("done", 5, 8))
+        self.assertEqual(orders.clean_placed({"orders": []}), [])  # older bot
+
 
 def make_game(test, toc="## Interface: 11508\n## Title: Wall of Shame Forever\nCore.lua\n"):
     game = tempfile.mkdtemp()
@@ -161,6 +176,15 @@ class WriterTest(unittest.TestCase):
         lua.execute(self.read(orders.LUA_FILE))
         reagent = lua.globals().WallOfShameForever_Orders.orders[1].reagents[1]
         self.assertEqual((reagent.itemId, reagent.qty), (2318, 8))
+
+    def test_lua_placed(self):
+        placed = orders.clean_placed({"placed": [{"id": "p1", "artisan": "Grumbar-Forever", "status": "pending",
+                                                  "qty": 1, "createdAt": 1, "reagents": []}]})
+        orders.write_orders(self.game, [], now=1000, placed=placed)
+        lua = lupa.LuaRuntime()
+        lua.execute(self.read(orders.LUA_FILE))
+        p = lua.globals().WallOfShameForever_Orders.placed[1]
+        self.assertEqual((p.id, p.status), ("p1", "pending"))
 
     def test_escaping(self):
         self.assertEqual(orders.lua_string('a"b\\c\nd\r\te\x01|é'), '"a\\"b\\\\c\\nd\\r\\te\\001|é"')

@@ -1,5 +1,13 @@
 # Wall of Shame Forever
 
+## v0.6.3 (2026-11-18)
+
+- Craft orders window: a new "My orders" tab for the orders you placed, grouped by artisan: pending,
+  done (with who to pick it up from) and refused (with the reason) for 7 days, and the artisan's
+  reply. On the right, your shopping list: the materials of your pending orders, for one artisan or
+  in total, with how many you have and how many are missing. With the auction house open, click a
+  material to search it there. The "To craft" tab is unchanged (needs companion 0.7.2)
+
 ## v0.6.2 (2026-11-18)
 
 - Craft orders window twice as wide: your orders on the left, their materials on the right. Click a

@@ -5,6 +5,7 @@
 --       buyer = { name, realm, class, level }, itemId, itemName, qty, note, createdAt,
 --       reply, reagents = { { itemId, name, qty }, ... } }, ... } }
 --   reply and reagents: companion 0.7.1 and later (reagents: the materials of the whole order)
+--   placed (companion 0.7.2 and later): the player's own orders as a buyer, see Orders.ReadPlaced
 -- The artisan ticks an order "done" or "refused" in our window; the answer goes to the companion
 -- like the other events (strip in real time, outbox on /reload or logout):
 --   2|O|id|name|realm|guild|level|class|time|battletag|order|status|reason
@@ -63,30 +64,37 @@ function Orders.UpdateIdentity(db, me, battleTag)
     return identity
 end
 
+-- Materials of a whole order: nil = a companion older than 0.7.1 (it does not pass them), {} = the
+-- bot does not know the recipe
+local function ReadReagents(raw)
+    if type(raw) ~= "table" then return nil end
+    local reagents = {}
+    for _, r in ipairs(raw) do
+        local id = type(r) == "table" and tonumber(r.itemId)
+        local count = type(r) == "table" and tonumber(r.qty)
+        if id and count and count > 0 then
+            reagents[#reagents + 1] = { itemId = id, qty = math.floor(count),
+                name = type(r.name) == "string" and r.name ~= "" and r.name or nil }
+        end
+    end
+    return reagents
+end
+
+local function ValidId(o)
+    local idType = type(o) == "table" and type(o.id)
+    return idType == "string" or idType == "number"
+end
+
 -- The companion's orders, checked one by one: nil when the file is missing, else a list (bad
 -- entries skipped)
 function Orders.ReadSource(source)
     if type(source) ~= "table" or type(source.orders) ~= "table" then return nil end
     local list = {}
     for _, o in ipairs(source.orders) do
-        local idType = type(o) == "table" and type(o.id)
-        if (idType == "string" or idType == "number") and type(o.artisan) == "string" then
+        if ValidId(o) and type(o.artisan) == "string" then
             local buyer = type(o.buyer) == "table" and o.buyer or {}
             local qty = math.floor(tonumber(o.qty) or 1)
-            -- materials of the whole order: nil = a companion older than 0.7.1 (it does not pass
-            -- them), {} = the bot does not know the recipe
-            local reagents
-            if type(o.reagents) == "table" then
-                reagents = {}
-                for _, r in ipairs(o.reagents) do
-                    local id = type(r) == "table" and tonumber(r.itemId)
-                    local count = type(r) == "table" and tonumber(r.qty)
-                    if id and count and count > 0 then
-                        reagents[#reagents + 1] = { itemId = id, qty = math.floor(count),
-                            name = type(r.name) == "string" and r.name ~= "" and r.name or nil }
-                    end
-                end
-            end
+            local reagents = ReadReagents(o.reagents)
             list[#list + 1] = {
                 id = tostring(o.id),
                 artisan = o.artisan,
@@ -109,12 +117,46 @@ function Orders.ReadSource(source)
     return list
 end
 
+local PLACED_STATUS = { pending = true, done = true, refused = true }
+
+-- The player's own orders as a buyer ("My orders" tab): nil when the companion does not write them
+-- (older than 0.7.2), else a list. status: pending, done or refused (done / refused: 7 days)
+function Orders.ReadPlaced(source)
+    if type(source) ~= "table" or type(source.placed) ~= "table" then return nil end
+    local list = {}
+    for _, o in ipairs(source.placed) do
+        if ValidId(o) and type(o.artisan) == "string" and PLACED_STATUS[o.status] then
+            local qty = math.floor(tonumber(o.qty) or 1)
+            list[#list + 1] = {
+                id = tostring(o.id),
+                artisan = o.artisan,
+                artisanClass = type(o.artisanClass) == "string" and o.artisanClass:upper() or nil,
+                buyer = type(o.buyer) == "string" and o.buyer or "",
+                status = o.status,
+                reason = type(o.reason) == "string" and o.reason or "",
+                itemId = tonumber(o.itemId),
+                itemName = type(o.itemName) == "string" and o.itemName ~= "" and o.itemName or nil,
+                qty = qty > 0 and qty or 1,
+                note = type(o.note) == "string" and o.note or "",
+                reply = type(o.reply) == "string" and o.reply or "",
+                reagents = ReadReagents(o.reagents),
+                createdAt = tonumber(o.createdAt) or 0,
+                updatedAt = tonumber(o.updatedAt) or tonumber(o.createdAt) or 0,
+            }
+        end
+    end
+    return list
+end
+
 -- Materials of these orders added up: { { itemId, name, qty } } by name; unknown = true when an
--- order came without its materials (companion older than 0.7.1)
+-- order came without its materials (companion older than 0.7.1). An order already done or refused
+-- (buyer side) needs nothing any more.
 function Orders.Materials(orders)
     local list, byId, unknown = {}, {}, false
     for _, o in ipairs(orders or {}) do
-        if type(o.reagents) ~= "table" then
+        if o.status and o.status ~= "pending" then
+            -- nothing to gather
+        elseif type(o.reagents) ~= "table" then
             unknown = true
         else
             for _, r in ipairs(o.reagents) do
@@ -180,7 +222,8 @@ function Orders.Group(pending)
         local key = (o.buyer.name .. "-" .. o.buyer.realm):lower()
         local group = byKey[key]
         if not group then
-            group = { key = key, buyer = o.buyer, orders = {} }
+            -- label, class: the name on the materials button (both tabs)
+            group = { key = key, buyer = o.buyer, label = o.buyer.name, class = o.buyer.class, orders = {} }
             byKey[key] = group
             groups[#groups + 1] = group
         end
@@ -192,6 +235,43 @@ function Orders.Group(pending)
     end
     table.sort(groups, function(a, b)
         if a.oldest ~= b.oldest then return a.oldest < b.oldest end
+        return a.key < b.key
+    end)
+    return groups
+end
+
+-- "My orders" tab: one group per artisan. Orders still pending first (oldest first), then the done
+-- and refused ones (latest first); artisans with something pending first.
+function Orders.GroupPlaced(placed)
+    local groups, byKey = {}, {}
+    for _, o in ipairs(placed or {}) do
+        local key = o.artisan:lower()
+        local group = byKey[key]
+        if not group then
+            group = { key = key, artisan = o.artisan, label = CharName(o.artisan), class = o.artisanClass,
+                orders = {}, pending = 0 }
+            byKey[key] = group
+            groups[#groups + 1] = group
+        end
+        group.orders[#group.orders + 1] = o
+        if o.status == "pending" then group.pending = group.pending + 1 end
+    end
+    for _, group in ipairs(groups) do
+        table.sort(group.orders, function(a, b)
+            local ap, bp = a.status == "pending", b.status == "pending"
+            if ap ~= bp then return ap end
+            if ap then return Older(a, b) end
+            if a.updatedAt ~= b.updatedAt then return a.updatedAt > b.updatedAt end
+            return a.id < b.id
+        end)
+        group.oldest = group.orders[1].createdAt
+        group.latest = 0
+        for _, o in ipairs(group.orders) do group.latest = math.max(group.latest, o.updatedAt) end
+    end
+    table.sort(groups, function(a, b)
+        if (a.pending > 0) ~= (b.pending > 0) then return a.pending > 0 end
+        if a.pending > 0 and a.oldest ~= b.oldest then return a.oldest < b.oldest end
+        if a.pending == 0 and a.latest ~= b.latest then return a.latest > b.latest end
         return a.key < b.key
     end)
     return groups
@@ -281,6 +361,7 @@ end
 
 local db
 local source         -- list from the companion's file, nil when it is missing
+local placedSource   -- the player's own orders (buyer side), nil before companion 0.7.2
 local me = "?"
 local itemWaiting = {} -- item ids asked to the server, shown as soon as they arrive
 local Refresh, UpdateBadge -- window and minimap button, below
@@ -292,6 +373,42 @@ end
 function Orders.List(scope)
     if not db then return {} end
     return Orders.Pending(source, db.ordersHandled, scope, me, Characters())
+end
+
+-- "My orders" tab: the player's own orders (nil before companion 0.7.2)
+function Orders.Placed()
+    return placedSource
+end
+
+-- Puts this item's name in the auction house search and runs it, when the auction house is open
+-- (the classic one, or the newer one). True when a search was started.
+function Orders.AuctionOpen()
+    return (AuctionFrame and AuctionFrame:IsShown())
+        or (AuctionHouseFrame and AuctionHouseFrame:IsShown()) or false
+end
+
+function Orders.SearchAuction(name)
+    if type(name) ~= "string" or name == "" then return false end
+    if AuctionFrame and AuctionFrame:IsShown() and BrowseName then
+        if AuctionFrameTab1 and AuctionFrameTab_OnClick and PanelTemplates_GetSelectedTab
+            and PanelTemplates_GetSelectedTab(AuctionFrame) ~= 1 then
+            pcall(AuctionFrameTab_OnClick, AuctionFrameTab1, "LeftButton", false, 1) -- the Browse tab
+        end
+        BrowseName:SetText(name)
+        if AuctionFrameBrowse_Search then
+            pcall(AuctionFrameBrowse_Search)
+        elseif BrowseSearchButton then
+            BrowseSearchButton:Click()
+        end
+        return true
+    end
+    local ah = AuctionHouseFrame
+    if ah and ah:IsShown() and ah.SearchBar then
+        if ah.SearchBar.SearchBox then ah.SearchBar.SearchBox:SetText(name) end
+        if ah.SearchBar.StartSearch then pcall(ah.SearchBar.StartSearch, ah.SearchBar) end
+        return true
+    end
+    return false
 end
 
 -- Strips one after the other, so two answers clicked quickly both reach the companion
@@ -453,12 +570,18 @@ end
 
 local win, popup
 local headerRows, itemRows, matRows = {}, {}, {}
--- page: orders page; buyer: buyer group shown in the materials column; mats: "buyer" or "total"
-local state = { page = 1, mats = "buyer" }
+-- page: orders page; sel: per tab, the group shown in the materials column (a buyer to craft for, or
+-- an artisan you ordered from); mats: "buyer" (that group) or "total"
+local state = { page = 1, mats = "buyer", sel = {} }
 Orders.ui = state -- for the tests
 
 local function Scope()
     return db and db.ordersScope == "account" and "account" or "char"
+end
+
+-- "craft": orders to make (artisan side); "placed": the player's own orders (buyer side)
+local function Tab()
+    return db and db.ordersTab == "placed" and "placed" or "craft"
 end
 
 local function NewHeaderRow()
@@ -488,12 +611,12 @@ local function NewHeaderRow()
     r:SetScript("OnMouseUp", function(self)
         if not self.group then return end
         ClickSound()
-        state.buyer, state.mats = self.group.key, "buyer"
+        state.sel[Tab()], state.mats = self.group.key, "buyer"
         Refresh()
     end)
     r:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(L("orders_buyer_click"), 1, 1, 1)
+        GameTooltip:SetText(L(Tab() == "placed" and "orders_artisan_click" or "orders_buyer_click"), 1, 1, 1)
         GameTooltip:Show()
     end)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -509,17 +632,24 @@ local function ShowItemTooltip(row)
         shown = pcall(GameTooltip.SetItemByID, GameTooltip, o.itemId)
     end
     if not shown then GameTooltip:SetText(row.itemName or "?") end
+    if o.status then -- one of my orders: where it stands
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(row.statusText or "")
+        if o.status == "refused" and o.reason ~= "" then
+            GameTooltip:AddLine(L("orders_refused_reason", o.reason), 1, 0.45, 0.45, true)
+        end
+    end
     if o.note ~= "" then
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L("orders_note"), GOLD[1], GOLD[2], GOLD[3])
+        GameTooltip:AddLine(L(o.status and "orders_my_note" or "orders_note"), GOLD[1], GOLD[2], GOLD[3])
         GameTooltip:AddLine(o.note, 0.85, 0.85, 0.85, true)
     end
     if o.reply ~= "" then
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(L("orders_reply"), GOLD[1], GOLD[2], GOLD[3])
+        GameTooltip:AddLine(L(o.status and "orders_reply_artisan" or "orders_reply"), GOLD[1], GOLD[2], GOLD[3])
         GameTooltip:AddLine(o.reply, 0.62, 0.83, 1, true)
     end
-    if type(o.reagents) == "table" and #o.reagents > 0 then
+    if type(o.reagents) == "table" and #o.reagents > 0 and (o.status or "pending") == "pending" then
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(L("orders_materials_for", o.qty), GOLD[1], GOLD[2], GOLD[3])
         for _, r in ipairs(o.reagents) do
@@ -571,6 +701,10 @@ local function NewItemRow()
     r.refuse:SetPoint("RIGHT", -8, 0)
     r.done = MakeButton(r, BTN_DONE_W, GREEN, function(self) Orders.Mark(self:GetParent().order, "done", "") end)
     r.done:SetPoint("RIGHT", r.refuse, "LEFT", -6, 0)
+    -- "My orders" tab: the status instead of the buttons
+    r.status = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    r.status:SetPoint("RIGHT", -12, 0)
+    r.status:SetJustifyH("RIGHT")
 
     r:SetScript("OnEnter", function(self)
         self.hover:Show()
@@ -583,18 +717,45 @@ local function NewItemRow()
     return r
 end
 
+-- A group's header: the buyer (to craft) or the artisan (my orders), with a gold mark on the one
+-- whose materials are shown
 local function FillHeader(r, entry)
-    local buyer = entry.header.buyer
-    r.group = entry.header
-    r.mark:SetShown(state.mats == "buyer" and state.buyer == entry.header.key)
+    local g = entry.header
+    r.group = g
+    r.mark:SetShown(state.mats == "buyer" and state.sel[Tab()] == g.key)
     r.bar:SetVertexColor(1, 1, 1, 0.35)
-    local c = buyer.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[buyer.class]
+    local c = g.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[g.class]
     if c then r.bar:SetVertexColor(c.r, c.g, c.b, 0.45) end
-    r.name:SetText(ns.ClassColored(buyer.name, buyer.class))
-    local info = buyer.level and L("orders_level", buyer.level) or ""
+    r.name:SetText(ns.ClassColored(g.label, g.class))
+    local info, age
+    if g.artisan then
+        info = g.pending > 0 and L("orders_placed_pending", g.pending) or ""
+        age = g.pending > 0 and Orders.Age(time(), g.oldest) or ""
+    else
+        info = g.buyer.level and L("orders_level", g.buyer.level) or ""
+        age = Orders.Age(time(), g.oldest)
+    end
     if entry.continued then info = info .. "  " .. L("orders_continued") end
     r.info:SetText(info)
-    r.age:SetText(Orders.Age(time(), entry.header.oldest))
+    r.age:SetText(age)
+end
+
+local STATUS_COLOR = { pending = "|cffffd200", done = "|cff4fd04f", refused = "|cffff6060" }
+
+-- One of my orders: status on the right, and under the name what to do about it
+local function FillPlacedText(r, o)
+    r.statusText = STATUS_COLOR[o.status] .. L("orders_status_" .. o.status) .. "|r"
+    r.status:SetText(r.statusText)
+    local line
+    if o.status == "done" then
+        line = "|cff4fd04f" .. L("orders_pickup", CharName(o.artisan)) .. "|r"
+    elseif o.status == "refused" then
+        line = o.reason ~= "" and ("|cffff8080" .. L("orders_refused_reason", o.reason) .. "|r") or ""
+    else
+        line = "|cff8f8f8f" .. Orders.Age(time(), o.createdAt) .. "|r"
+    end
+    if o.reply ~= "" then line = line .. "  |cff9fd4ff\194\171 " .. o.reply .. " \194\187|r" end
+    return line
 end
 
 local function FillItem(r, entry, index)
@@ -610,10 +771,22 @@ local function FillItem(r, entry, index)
     r.border:SetVertexColor(qr, qg, qb)
     r.name:SetTextColor(qr, qg, qb)
     r.name:SetText(name .. "  |cffffffff\195\151" .. o.qty .. "|r")
-    local note = o.note ~= "" and ("\194\171 " .. o.note .. " \194\187") or ""
-    if Scope() == "account" and o.artisan:lower() ~= me:lower() then
-        local artisan = "|cff8f8f8f" .. L("orders_for", CharName(o.artisan)) .. "|r"
-        note = note ~= "" and (artisan .. "  " .. note) or artisan
+    local note
+    if o.status then -- "My orders" tab: status, no buttons
+        r.done:Hide()
+        r.refuse:Hide()
+        r.status:Show()
+        note = FillPlacedText(r, o)
+    else
+        r.done:Show()
+        r.refuse:Show()
+        r.status:Hide()
+        r.statusText = nil
+        note = o.note ~= "" and ("\194\171 " .. o.note .. " \194\187") or ""
+        if Scope() == "account" and o.artisan:lower() ~= me:lower() then
+            local artisan = "|cff8f8f8f" .. L("orders_for", CharName(o.artisan)) .. "|r"
+            note = note ~= "" and (artisan .. "  " .. note) or artisan
+        end
     end
     r.note:SetText(note)
     r.name:ClearAllPoints()
@@ -655,30 +828,37 @@ local function NewMatRow()
         end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine(L("orders_have_hint"), 0.7, 0.7, 0.7, true)
+        GameTooltip:AddLine(L(Orders.AuctionOpen() and "orders_ah_click" or "orders_ah_closed"), 0.4, 0.8, 1, true)
         GameTooltip:Show()
     end)
     r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    -- with the auction house open: search this material there
+    r:SetScript("OnMouseUp", function(self)
+        if Orders.SearchAuction(self.searchName) then ClickSound() end
+    end)
     return r
 end
 
--- Materials column: the selected buyer's orders, or all of them (Total)
+-- Materials column: the selected group's orders (a buyer, or an artisan in "My orders"), or all of
+-- them (Total). Only orders still pending count.
 local function RefreshMaterials(groups, pending)
+    local tab = Tab()
     local group
     for _, g in ipairs(groups) do
-        if g.key == state.buyer then group = g end
+        if g.key == state.sel[tab] then group = g end
     end
     if not group then
         group = groups[1]
-        state.buyer = group and group.key or nil
+        state.sel[tab] = group and group.key or nil
     end
     local showTotal = state.mats == "total" or not group
     local list, unknown = Orders.Materials(showTotal and pending or group.orders)
 
-    win.matsBuyer.label:SetText(group and ns.ClassColored(group.buyer.name, group.buyer.class) or "-")
+    win.matsBuyer.label:SetText(group and ns.ClassColored(group.label, group.class) or "-")
     SetScopeButton(win.matsBuyer, not showTotal)
     SetScopeButton(win.matsTotal, showTotal)
     if group then win.matsBuyer:Enable() else win.matsBuyer:Disable() end
-    win.matsTitle:SetText(L("orders_materials"))
+    win.matsTitle:SetText(L(tab == "placed" and "orders_shopping" or "orders_materials"))
     win.matsTotal.label:SetText(L("orders_materials_total"))
 
     for _, r in ipairs(matRows) do r:Hide() end
@@ -692,6 +872,7 @@ local function RefreshMaterials(groups, pending)
             matRows[i] = r
             local name, quality, icon = ItemInfo(m.itemId)
             r.itemId = m.itemId
+            r.searchName = name or m.name -- the game's name (client language) for the auction house
             r.icon:SetTexture(icon or UNKNOWN_ICON)
             r.name:SetText(name or m.name or L("orders_unknown_item", m.itemId))
             r.name:SetTextColor(QualityColor(quality))
@@ -728,15 +909,35 @@ end
 
 Refresh = function()
     if not (win and win:IsShown()) then return end
+    local tab = Tab()
     win.title:SetText(L("orders_title", CharName(me)))
     win.scopeChar.label:SetText(L("orders_scope_char"))
     win.scopeAccount.label:SetText(L("orders_scope_account"))
     SetScopeButton(win.scopeChar, Scope() == "char")
     SetScopeButton(win.scopeAccount, Scope() == "account")
+    -- the scope (this character / all) only means something for the orders to craft
+    win.scopeChar:SetShown(tab == "craft")
+    win.scopeAccount:SetShown(tab == "craft")
 
-    local pending = Orders.List(Scope())
-    local groups = Orders.Group(pending)
-    RefreshMaterials(groups, pending) -- first: it picks the buyer whose header gets the gold mark
+    local toCraft = Orders.List(Scope())
+    local placed = placedSource or {}
+    local placedPending = {}
+    for _, o in ipairs(placed) do
+        if o.status == "pending" then placedPending[#placedPending + 1] = o end
+    end
+    win.tabCraft.label:SetText(L("orders_tab_craft", #toCraft))
+    win.tabPlaced.label:SetText(L("orders_tab_placed", #placedPending))
+    SetScopeButton(win.tabCraft, tab == "craft")
+    SetScopeButton(win.tabPlaced, tab == "placed")
+
+    -- shown: the orders listed; pending: the ones whose materials count
+    local shown, pending, groups
+    if tab == "placed" then
+        shown, pending, groups = placed, placedPending, Orders.GroupPlaced(placed)
+    else
+        shown, pending, groups = toCraft, toCraft, Orders.Group(toCraft)
+    end
+    RefreshMaterials(groups, pending) -- first: it picks the group whose header gets the gold mark
     local pages = Orders.Paginate(groups, CAPACITY, HEADER_H, ITEM_H)
     state.pages = pages
     state.page = math.max(1, math.min(state.page, #pages))
@@ -766,14 +967,23 @@ Refresh = function()
         y = y + height
     end
 
-    if #pending == 0 then
-        win.empty.text:SetText(L("orders_empty"))
-        win.empty.hint:SetText(L(source and "orders_empty_hint" or "orders_no_file"))
+    if #shown == 0 then
+        if tab == "placed" then
+            win.empty.text:SetText(L("orders_placed_empty"))
+            win.empty.hint:SetText(L(placedSource and "orders_placed_empty_hint" or "orders_placed_update"))
+        else
+            win.empty.text:SetText(L("orders_empty"))
+            win.empty.hint:SetText(L(source and "orders_empty_hint" or "orders_no_file"))
+        end
         win.empty:Show()
     else
         win.empty:Hide()
     end
-    win.total:SetText(L(#pending == 1 and "orders_count_one" or "orders_count", #pending))
+    if tab == "placed" then
+        win.total:SetText(L("orders_placed_count", #pending))
+    else
+        win.total:SetText(L(#pending == 1 and "orders_count_one" or "orders_count", #pending))
+    end
     win.pageText:SetText(L("orders_page", state.page, #pages))
     if state.page > 1 then win.prev:Enable() else win.prev:Disable() end
     if state.page < #pages then win.next:Enable() else win.next:Disable() end
@@ -839,10 +1049,21 @@ local function CreateWindow()
         state.page = 1
         Refresh()
     end
-    win.scopeChar = MakeButton(win, 150, GREY, function() SetScope("char") end)
-    win.scopeChar:SetPoint("TOPLEFT", 14, -68)
     win.scopeAccount = MakeButton(win, 150, GREY, function() SetScope("account") end)
-    win.scopeAccount:SetPoint("LEFT", win.scopeChar, "RIGHT", 6, 0)
+    win.scopeAccount:SetPoint("TOPRIGHT", -14, -68)
+    win.scopeChar = MakeButton(win, 150, GREY, function() SetScope("char") end)
+    win.scopeChar:SetPoint("RIGHT", win.scopeAccount, "LEFT", -6, 0)
+
+    -- tabs: orders to craft (artisan) / my own orders (buyer)
+    local function SetTab(tab)
+        db.ordersTab = tab
+        state.page, state.mats = 1, "buyer"
+        Refresh()
+    end
+    win.tabCraft = MakeButton(win, 170, GREY, function() SetTab("craft") end)
+    win.tabCraft:SetPoint("TOPLEFT", 14, -68)
+    win.tabPlaced = MakeButton(win, 170, GREY, function() SetTab("placed") end)
+    win.tabPlaced:SetPoint("LEFT", win.tabCraft, "RIGHT", 6, 0)
 
     -- list (left column)
     win.list = CreateFrame("Frame", nil, win, "BackdropTemplate")
@@ -1245,6 +1466,7 @@ events:SetScript("OnEvent", function(_, event, itemId)
         -- the companion's file, a separate addon loaded before PLAYER_LOGIN (may be missing)
         source = Orders.ReadSource(_G.WallOfShameForever_Orders)
         if source then Orders.Prune(db.ordersHandled, source) end
+        placedSource = Orders.ReadPlaced(_G.WallOfShameForever_Orders)
         ApplyMinimapButton()
         C_Timer.After(8, Orders.Notify) -- after the loading screen and the login chat lines
     elseif event == "BAG_UPDATE_DELAYED" then

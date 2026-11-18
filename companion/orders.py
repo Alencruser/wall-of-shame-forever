@@ -35,8 +35,12 @@ ORDER_KEYS = ("id", "artisan", "buyer", "itemId", "itemName", "qty", "note", "re
               "createdAt")
 BUYER_KEYS = ("name", "realm", "class", "level")
 REAGENT_KEYS = ("itemId", "name", "qty")
-NUMBER_KEYS = ("itemId", "qty", "createdAt", "level")
+NUMBER_KEYS = ("itemId", "qty", "createdAt", "updatedAt", "level")
 MAX_REAGENTS = 20  # a recipe has 6 at most: anything longer is not what the bot sends
+# the player's own orders, as a buyer (bot 2026-11 and later): the addon's "My orders" tab
+PLACED_KEYS = ("id", "artisan", "artisanClass", "buyer", "status", "reason", "itemId", "itemName", "qty",
+               "note", "reply", "reagents", "createdAt", "updatedAt")
+PLACED_STATUSES = ("pending", "done", "refused")
 
 IDENTITY_RE = re.compile(r'\["orderIdentity"\]\s*=\s*\{')
 BATTLETAG_RE = re.compile(r'\["battletag"\]\s*=\s*"((?:[^"\\]|\\.)*)"')
@@ -138,17 +142,36 @@ def clean_orders(data):
                 buyer = raw.get("buyer") if isinstance(raw.get("buyer"), dict) else {}
                 order["buyer"] = {k: _clean(buyer.get(k), k in NUMBER_KEYS) for k in BUYER_KEYS}
             elif key == "reagents":
-                # materials of the whole order (bot 2026-11 and later); none from an older bot
-                reagents = raw.get("reagents") if isinstance(raw.get("reagents"), list) else []
-                order["reagents"] = [
-                    {k: _clean(r.get(k), k in NUMBER_KEYS) for k in REAGENT_KEYS}
-                    for r in reagents[:MAX_REAGENTS]
-                    if isinstance(r, dict) and isinstance(_clean(r.get("itemId"), True), int)
-                ]
+                order["reagents"] = _clean_reagents(raw.get("reagents"))
             else:
                 order[key] = _clean(raw.get(key), key in NUMBER_KEYS)
         orders.append(order)
     return orders
+
+
+def _clean_reagents(reagents):
+    """Materials of the whole order (bot 2026-11 and later); none from an older bot."""
+    if not isinstance(reagents, list):
+        return []
+    return [{k: _clean(r.get(k), k in NUMBER_KEYS) for k in REAGENT_KEYS}
+            for r in reagents[:MAX_REAGENTS]
+            if isinstance(r, dict) and isinstance(_clean(r.get("itemId"), True), int)]
+
+
+def clean_placed(data):
+    """The "placed" of a reply (the player's own orders as a buyer), same checks as the orders; [] from
+    a bot that does not send them."""
+    raw_list = data.get("placed") if isinstance(data, dict) else None
+    if not isinstance(raw_list, list):
+        return []
+    placed = []
+    for raw in raw_list:
+        if not isinstance(raw, dict) or raw.get("id") in (None, "") or raw.get("status") not in PLACED_STATUSES:
+            continue
+        order = {key: _clean(raw.get(key), key in NUMBER_KEYS) for key in PLACED_KEYS if key != "reagents"}
+        order["reagents"] = _clean_reagents(raw.get("reagents"))
+        placed.append(order)
+    return placed
 
 
 def merge(order_lists):
@@ -202,12 +225,14 @@ def lua_value(value, indent=""):
     return "{\n" + "\n".join(items) + "\n" + indent + "}" if items else "{}"
 
 
-def lua_file(orders, updated):
+def lua_file(orders, updated, placed=()):
+    """orders: to craft (artisan side); placed: the player's own (buyer side, "My orders" tab)."""
     return ("-- Written by the Wall of Shame Forever companion: craft orders for the addon.\n"
             "-- Rewritten when the orders change; edits here are lost.\n"
             f"{GLOBAL} = {{\n"
             f'\t["updated"] = {int(updated)},\n'
             f'\t["orders"] = {lua_value(orders, chr(9))},\n'
+            f'\t["placed"] = {lua_value(list(placed), chr(9))},\n'
             "}\n")
 
 
@@ -252,7 +277,7 @@ def _without_updated(text):
     return UPDATED_RE.sub('["updated"] = 0', text)
 
 
-def write_orders(game_dir, orders, now=None):
+def write_orders(game_dir, orders, now=None, placed=()):
     """Writes the orders addon in that game folder (only where WallOfShameForever is installed).
     True when a file was written."""
     if not wowpath.has_addon(game_dir):
@@ -260,7 +285,7 @@ def write_orders(game_dir, orders, now=None):
     folder = os.path.join(game_dir, "Interface", "AddOns", FOLDER)
     os.makedirs(folder, exist_ok=True)
     toc = _write_if_changed(os.path.join(folder, TOC_FILE), toc_file(addon_interface(game_dir)))
-    lua = _write_if_changed(os.path.join(folder, LUA_FILE), lua_file(orders, now or time.time()),
+    lua = _write_if_changed(os.path.join(folder, LUA_FILE), lua_file(orders, now or time.time(), placed),
                             same=lambda a, b: _without_updated(a) == _without_updated(b))
     return toc or lua
 
@@ -328,7 +353,7 @@ class Orders:
         groups = self.identities(texts)
         if not groups:
             return self._error("orders: no character known yet (log in once with the addon)")
-        results = []
+        results, placed_lists = [], []
         for tag, chars in groups.items():
             try:
                 r = requests.get(request_url(url, tag, chars),
@@ -350,19 +375,22 @@ class Orders:
             if orders is None:
                 return self._error("orders: unexpected reply from the bot, kept the last ones")
             results.append(orders)
+            placed_lists.append(clean_placed(r.json()))
         with self.lock:
             self.last_error = None
         orders = merge(results)
+        placed = merge(placed_lists)
         written = False
         for game_dir in game_dirs:
             try:
-                written = write_orders(game_dir, orders, now) or written
+                written = write_orders(game_dir, orders, now, placed) or written
             except OSError as e:
                 self.log(f"orders: could not write them to {game_dir}: {e}")
         with self.lock:
             first, self.count = self.count is None, len(orders)
         if written or first:
-            self.log(f"orders: {len(orders)} pending for {sum(map(len, groups.values()))} character(s)"
+            self.log(f"orders: {len(orders)} pending, {len(placed)} placed, for "
+                     f"{sum(map(len, groups.values()))} character(s)"
                      + (", written for the addon" if written else ", unchanged"))
 
     def _error(self, message):

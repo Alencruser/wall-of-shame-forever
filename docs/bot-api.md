@@ -191,6 +191,25 @@ disappears from the list once reported or cancelled.
   the bot does not know the recipe. Older bots send neither `reply` nor `reagents`
 - poll every 2 minutes or so; the bot only logs a request when its answer changes
 
+The same answer also lists the player's **own** orders as a buyer (the addon's "My orders" tab),
+`placed`: the orders placed by the Discord member of that battletag, or by one of the `chars`,
+still pending or done / refused in the last 7 days (cancelled ones never), oldest first. Older bots
+send no `placed`; companions before 0.7.2 ignore it.
+
+```json
+{ "orders": [ ... ],
+  "placed": [
+  { "id": "7b1e0c42", "artisan": "Grumbar-Forever", "artisanClass": "WARRIOR",
+    "buyer": "Thrall-Forever", "status": "done", "reason": "", "itemId": 2848,
+    "itemName": "Bronze Shortsword", "qty": 2, "note": "", "reply": "Ready on Friday",
+    "reagents": [ { "itemId": 2841, "name": "Bronze Bar", "qty": 8 } ],
+    "createdAt": 1793702383, "updatedAt": 1793788783 } ] }
+```
+
+- `status`: `pending`, `done` or `refused`; `reason`: the artisan's reason for a refusal
+- `artisanClass`: the artisan's class token when the bot knows it, else `null`
+- `reagents`: as above (the addon only adds up those of pending orders); `updatedAt`: last change
+
 ## Response
 
 - `2xx`: received (also for an `id` already received: the companion retries after network

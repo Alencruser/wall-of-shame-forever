@@ -16,6 +16,13 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.3 + Compagnon 0.7.2
+
+- **Nouvel onglet « Mes commandes »** dans la fenêtre des commandes (`/wos commandes` ou l'icône de la minimap) : les commandes que vous avez passées, rangées par artisan. En attente, **faites** (avec chez qui les récupérer) ou **refusées** (avec la raison), pendant 7 jours, et la réponse de l'artisan
+- **Liste de courses** à droite : les composants de vos commandes en attente, pour un artisan ou au total, avec *possédés / nécessaires* et ce qui manque
+- **À l'hôtel des ventes** : un clic sur un composant le cherche directement
+- **Mettez à jour le compagnon en 0.7.2** (menu du compagnon > **Check for updates**) : c'est lui qui apporte vos commandes. Addon : mettez-le à jour depuis CurseForge
+
 ## Addon v0.6.2 + Compagnon 0.7.1
 
 - **Fenêtre des commandes plus grande** : vos commandes à gauche, leurs **composants** à droite. Cliquez le nom d'un acheteur pour ses composants, ou **Total** pour toutes vos commandes
