@@ -16,6 +16,14 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.4 + Compagnon 0.7.3
+
+- **Suivi de la banque de guilde** : en ouvrant la banque de guilde, l'addon lit le journal des richesses (dépôts et retraits d'argent) et l'envoie au bot. Rien à faire, rien ne s'affiche en jeu : il suffit d'ouvrir la banque de temps en temps
+- **Sur Discord** : un bilan dans le salon de la banque (objectif 100 po, soldes de chacun, records, mécène du mois, rat de banque) et `/banque recap` pour ton récap du jour ou de la semaine, tous tes persos réunis
+- **Classements** avec `/banque classement` : plus gros dépôt, série de jours avec un dépôt, pièce jaune, fidèle…
+- **Ton battletag doit être dans l'annuaire** pour que tes dépôts soient à ton nom
+- **Mettez à jour le compagnon en 0.7.3** (menu du compagnon > **Check for updates**) : c'est lui qui envoie le journal au bot. Addon : mettez-le à jour depuis CurseForge
+
 ## Addon v0.6.3 + Compagnon 0.7.2
 
 - **Nouvel onglet « Mes commandes »** dans la fenêtre des commandes (`/wos commandes` ou l'icône de la minimap) : les commandes que vous avez passées, rangées par artisan. En attente, **faites** (avec chez qui les récupérer) ou **refusées** (avec la raison), pendant 7 jours, et la réponse de l'artisan

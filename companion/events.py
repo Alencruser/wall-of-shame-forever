@@ -19,8 +19,11 @@ FIELDS = {
     "X": ("debug", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "topic", "details"]),
     "O": ("order", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "order",
                     "status", "reason"]),
+    # guild bank money log, read when the bank opens (see GuildBank.lua); the bot merges the readings
+    "B": ("banklog", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "money",
+                      "lines"]),
 }
-NUMBERS = ("level", "killerLevel", "victimLevel", "time")
+NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money")
 
 LUA_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
 STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -53,6 +56,20 @@ def parse_professions(text):
     return professions
 
 
+def parse_bank_lines(text):
+    """"type:copper:years:months:days:hours:who;..." -> list, in the game's order (oldest first)."""
+    lines = []
+    for entry in filter(None, (text or "").split(";")):
+        parts = entry.split(":")
+        numbers = [_int(p) for p in parts[1:6]] if len(parts) == 7 else [None]
+        if None in numbers or not parts[0] or not parts[6]:
+            continue
+        copper, years, months, days, hours = numbers
+        lines.append({"type": parts[0], "who": parts[6], "copper": copper, "years": years,
+                      "months": months, "days": days, "hours": hours})
+    return lines
+
+
 def parse_payload(payload, source):
     parts = payload.split("|")
     if len(parts) < 2 or parts[0] != "2" or parts[1] not in FIELDS:
@@ -72,6 +89,10 @@ def parse_payload(payload, source):
         ev["professions"] = parse_professions(ev["professions"])
     elif kind == "order" and ev["status"] not in ("done", "refused"):
         return None
+    elif kind == "banklog":
+        ev["lines"] = parse_bank_lines(ev["lines"])
+        if not ev["lines"]:
+            return None
     ev["test"] = ev["id"].startswith("test:")
     ev["source"] = source
     return ev

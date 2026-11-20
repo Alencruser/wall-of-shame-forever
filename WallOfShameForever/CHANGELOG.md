@@ -1,5 +1,12 @@
 # Wall of Shame Forever
 
+## v0.6.4 (2026-11-20)
+
+- Guild bank: when you open the guild bank, the addon reads its money log (deposits and
+  withdrawals, no click on the tab needed) and the bank's balance, and sends them to the guild's
+  Discord bot (needs companion 0.7.3). Nothing shows in game; a reading is sent only when the log
+  changed
+
 ## v0.6.3 (2026-11-18)
 
 - Craft orders window: a new "My orders" tab for the orders you placed, grouped by artisan: pending,

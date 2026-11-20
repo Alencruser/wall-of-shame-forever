@@ -312,6 +312,10 @@ def check_outbox(paths, mtimes, state, sender, order_poller=None):
                     + ", ".join(f"{p['name']} {p['level']}" for p in ev["professions"]))
                 sender.push(ev, None)
                 continue
+            if ev["type"] == "banklog":  # a new id per reading: the bot merges them, late is fine
+                log(f"guild bank log found in SavedVariables: {len(ev['lines'])} line(s) read by {ev['name']}")
+                sender.push(ev, None)
+                continue
             if ev["type"] == "debug":  # diagnostic for the bot's debug.jsonl, never posted
                 log(f"debug report found in SavedVariables: {ev['topic']} from {ev['name']}")
                 sender.push(ev, None)

@@ -135,6 +135,30 @@ never posted. The bot appends it as one JSON line to `debug.jsonl` and answers `
   game sent `PLAYER_DEAD` again for a death already counted; the addon did not send it twice
 - `details`: free text from the addon (4000 characters at most), `key=value` parts separated by `;`
 
+Guild bank log event, from SavedVariables only (no strip, no screenshot): the guild bank's money log
+("Journal des richesses"), read by the addon each time the player opens the guild bank (no click on
+the tab needed). Queued only when the log changed since the last reading of that guild. A new `id`
+for every reading; the game keeps only the latest transactions and gives each one an age, so the bot
+merges the readings of every guildmate:
+
+```json
+{ "type": "banklog", "id": "Grumbar-Forever:B:1793702383", "name": "Grumbar", "realm": "Forever",
+  "guild": "Bagarre", "level": 30, "class": "WARRIOR", "time": 1793702383, "battletag": "Pierre#1234",
+  "money": 16302,
+  "lines": [
+    { "type": "deposit", "who": "Lwi Zi", "copper": 202, "years": 0, "months": 0, "days": 13, "hours": 8 },
+    { "type": "withdraw", "who": "Chamy Chan", "copper": 10000, "years": 0, "months": 0, "days": 0, "hours": 0 } ],
+  "test": false, "source": "savedvariables" }
+```
+
+- `money`: the bank's balance in copper at the reading, `null` if unknown
+- `lines`: in the game's order, oldest first. `type` as the game gives it (`deposit`, `withdraw`,
+  `repair`, `withdrawForTab`, `buyTab`…); `who`: the name the log shows (no realm for the reader's
+  realm); the age (`years`…`hours`) is relative to `time` and rounded down to the hour
+- the bot estimates each transaction's date (`time` minus the age) and keeps a line once: same type,
+  character, amount and a date within 3 hours of a known transaction (two identical lines of one
+  reading stay two transactions)
+
 - `class`: WoW class token (`WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `SHAMAN`, `MAGE`,
   `WARLOCK`, `DRUID`)
 - `killer`: mob or player name, or the environment (`Falling`, `Drowning`, `Fatigue`, `Fire`,
