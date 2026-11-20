@@ -51,6 +51,11 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#companion-v}"
           number="${version//./\\.}"
+          # a release without announcement: a line "<!-- sans-annonce: Compagnon X.Y.Z -->" instead
+          if grep -iqE "^<!--[[:space:]]*sans-annonce:[[:space:]]*compagnon[[:space:]]+v?${number}[[:space:]]*-->" ../docs/annonces.md; then
+            echo "companion ${version}: released without announcement"
+            exit 0
+          fi
           if ! grep -iqE "^##[[:space:]].*compagnon[[:space:]]+v?${number}([^0-9.]|\.([^0-9]|$)|$)" ../docs/annonces.md; then
             echo "::error::docs/annonces.md has no entry for the companion ${version}: add a heading \"## Compagnon ${version}\" (or \"## Addon vX.Y.Z + Compagnon ${version}\"), push main, then tag again"
             exit 1

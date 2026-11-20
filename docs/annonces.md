@@ -14,15 +14,11 @@ Ordre de publication :
   3. addon : companion\.venv\Scripts\python release.py --upload (refuse sans entrée
      "## Addon vX.Y.Z" ; --sans-annonce pour publier sans annonce) ;
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
+Compagnon sorti sans annonce : une ligne <!-- sans-annonce: Compagnon X.Y.Z --> ici, sous ce bloc
+(le bot ne la lit pas comme une annonce, le workflow l'accepte à la place de l'entrée).
 -->
 
-## Addon v0.6.5 + Compagnon 0.7.4
-
-- **Temps de suivi** : le temps passé à suivre un guildeux (`/follow` ou clic droit > Suivre) est compté. Suivre quelqu'un hors de la guilde ne compte pas
-- **Sur Discord** : le classement de **qui suit le plus** dans le salon du suivi, et `/suivi recap` pour ton temps (derrière qui, avec quels persos)
-- Pendant un suivi, une petite bande de couleur apparaît quelques secondes toutes les 5 minutes : c'est normal, le compagnon la lit pour ne rien perdre si le jeu plante
-- **Ton battletag doit être dans l'annuaire** pour que ton temps soit à ton nom
-- **Mettez à jour le compagnon en 0.7.4** (menu du compagnon > **Check for updates**). Addon : mettez-le à jour depuis CurseForge
+<!-- sans-annonce: Compagnon 0.7.4 -->
 
 ## Addon v0.6.4 + Compagnon 0.7.3
 
