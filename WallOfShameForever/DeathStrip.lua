@@ -88,6 +88,13 @@ local function Place(frame, size)
 end
 
 local strip, textures, hideToken = nil, {}, nil
+local shownAt -- GetTime() of the last strip
+
+-- A strip is on screen (or was a moment ago): a periodic strip (Follow.lua) waits, so it never cuts
+-- a death or a level-up short
+function ns.StripBusy()
+    return shownAt ~= nil and GetTime() - shownAt < SHOW_TIME + 0.5
+end
 
 function ns.ShowStrip(payload)
     if not GetPhysicalScreenSize then return end
@@ -111,6 +118,7 @@ function ns.ShowStrip(payload)
     end
     for i = #blocks + 1, #textures do textures[i]:Hide() end
     strip:Show()
+    shownAt = GetTime()
 
     local token = {}
     hideToken = token

@@ -159,6 +159,25 @@ merges the readings of every guildmate:
   character, amount and a date within 3 hours of a known transaction (two identical lines of one
   reading stay two transactions)
 
+Follow event, on the strip and in SavedVariables, never with a screenshot: the time the player has
+spent auto-following (`/follow`) a member of their guild. A strip every 5 minutes during the follow
+and one at the end; the end is also queued in SavedVariables (only the latest update of a session
+waits there). A new `id` per update:
+
+```json
+{ "type": "follow", "id": "Grumbar-Forever:F:1795199555:300", "name": "Grumbar", "realm": "Forever",
+  "guild": "Bagarre", "level": 30, "class": "WARRIOR", "time": 1795199855, "battletag": "Pierre#1234",
+  "target": "Johnny Teitelbaum", "start": 1795199555, "seconds": 300, "done": false,
+  "test": false, "source": "realtime" }
+```
+
+- `target`: the followed guild member, as the game shows the name (followers of someone outside the
+  guild send nothing); `start`: when the follow began, the same for every update of the session;
+  `seconds`: time followed so far; `done`: `true` for the session's last update (follow ended, new
+  target, /reload or logout)
+- keep the highest `seconds` per follower (`name`, `realm`) and `start`: an update received twice, or
+  after a later one, changes nothing. A game crash loses at most the minutes since the last strip
+
 - `class`: WoW class token (`WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `SHAMAN`, `MAGE`,
   `WARLOCK`, `DRUID`)
 - `killer`: mob or player name, or the environment (`Falling`, `Drowning`, `Fatigue`, `Fire`,

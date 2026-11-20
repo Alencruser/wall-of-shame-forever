@@ -16,6 +16,14 @@ Ordre de publication :
   4. tag (companion-vX.Y.Z pour le compagnon : le workflow s'arrête sans entrée "Compagnon X.Y.Z").
 -->
 
+## Addon v0.6.5 + Compagnon 0.7.4
+
+- **Temps de suivi** : le temps passé à suivre un guildeux (`/follow` ou clic droit > Suivre) est compté. Suivre quelqu'un hors de la guilde ne compte pas
+- **Sur Discord** : le classement de **qui suit le plus** dans le salon du suivi, et `/suivi recap` pour ton temps (derrière qui, avec quels persos)
+- Pendant un suivi, une petite bande de couleur apparaît quelques secondes toutes les 5 minutes : c'est normal, le compagnon la lit pour ne rien perdre si le jeu plante
+- **Ton battletag doit être dans l'annuaire** pour que ton temps soit à ton nom
+- **Mettez à jour le compagnon en 0.7.4** (menu du compagnon > **Check for updates**). Addon : mettez-le à jour depuis CurseForge
+
 ## Addon v0.6.4 + Compagnon 0.7.3
 
 - **Suivi de la banque de guilde** : en ouvrant la banque de guilde, l'addon lit le journal des richesses (dépôts et retraits d'argent) et l'envoie au bot. Rien à faire, rien ne s'affiche en jeu : il suffit d'ouvrir la banque de temps en temps

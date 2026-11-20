@@ -1,5 +1,12 @@
 # Wall of Shame Forever
 
+## v0.6.5 (2026-11-20)
+
+- Follow time: the time you spend following (/follow) a member of your guild is sent to the guild's
+  Discord bot (needs companion 0.7.4). During a follow, a strip shows every 5 minutes (and at the
+  end) so a game crash loses at most the last minutes. Following someone outside the guild is not
+  counted
+
 ## v0.6.4 (2026-11-20)
 
 - Guild bank: when you open the guild bank, the addon reads its money log (deposits and

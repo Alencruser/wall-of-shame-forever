@@ -2106,6 +2106,11 @@ ns.Identity = Identity
 ns.Clean = Clean
 ns.AddToOutbox = AddToOutbox
 ns.GetDB = function() return db end
+-- a current member of the guild (from the roster), by the name the game shows
+ns.IsGuildMember = function(name)
+    local m = db and name and db.members[ShortName(name)]
+    return m ~= nil and m.inGuild == true
+end
 ns.L = L
 ns.ClassColored = ClassColored
 ns.ClassName = ClassName

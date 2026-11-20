@@ -22,8 +22,12 @@ FIELDS = {
     # guild bank money log, read when the bank opens (see GuildBank.lua); the bot merges the readings
     "B": ("banklog", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "money",
                       "lines"]),
+    # time spent following a guildmate (see Follow.lua): a strip every 5 minutes and at the end, the
+    # end in the outbox too; the bot keeps the highest seconds per follower and start
+    "F": ("follow", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "target", "start",
+                     "seconds", "done"]),
 }
-NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money")
+NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds")
 
 LUA_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
 STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -89,6 +93,10 @@ def parse_payload(payload, source):
         ev["professions"] = parse_professions(ev["professions"])
     elif kind == "order" and ev["status"] not in ("done", "refused"):
         return None
+    elif kind == "follow":
+        ev["done"] = ev["done"] == "1"
+        if not ev["target"] or ev["start"] is None or ev["seconds"] is None:
+            return None
     elif kind == "banklog":
         ev["lines"] = parse_bank_lines(ev["lines"])
         if not ev["lines"]:

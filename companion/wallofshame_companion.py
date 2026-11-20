@@ -250,13 +250,18 @@ def check_strip(sct, state, sender, order_poller=None):
         return
     payload, box, position = found
     ev = events.parse_payload(payload, "realtime")
-    if not ev or ev["type"] not in ("death", "level", "duel", "kill", "order") or ev["id"] in state:
+    if not ev or ev["type"] not in ("death", "level", "duel", "kill", "order", "follow") or ev["id"] in state:
         return
     state.add(ev["id"])
     if order_poller:
         order_poller.saw(ev)
     if ev["type"] == "order":  # never a screenshot
         log(f"order {ev['status']} seen on screen: {ev['order']} by {ev['name']}")
+        sender.push(ev, None)
+        return
+    if ev["type"] == "follow":  # never a screenshot
+        log(f"follow seen on screen: {ev['name']} follows {ev['target']} for {ev['seconds']}s"
+            f"{' (end)' if ev['done'] else ''}")
         sender.push(ev, None)
         return
     # the game screen without the strip (and, strip at the top, on macOS without the title bar)
@@ -310,6 +315,10 @@ def check_outbox(paths, mtimes, state, sender, order_poller=None):
             if ev["type"] == "professions":  # a new id per reading: the bot keeps the latest
                 log(f"professions found in SavedVariables: {ev['name']}, "
                     + ", ".join(f"{p['name']} {p['level']}" for p in ev["professions"]))
+                sender.push(ev, None)
+                continue
+            if ev["type"] == "follow":  # the bot keeps the highest seconds per session, late is fine
+                log(f"follow found in SavedVariables: {ev['name']} followed {ev['target']} for {ev['seconds']}s")
                 sender.push(ev, None)
                 continue
             if ev["type"] == "banklog":  # a new id per reading: the bot merges them, late is fine
