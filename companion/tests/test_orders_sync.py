@@ -236,7 +236,9 @@ class PollTest(unittest.TestCase):
         self.poller.saw({"name": "Other", "realm": "R", "battletag": ""})
         get = self.poll(Reply(200, {"orders": [ORDER]}), now=1000)
         self.assertEqual(get.call_count, 2)  # Alen#1234, and the character seen without battletag
-        self.assertEqual(get.call_args_list[0].kwargs["headers"], {"Authorization": "Bearer k3y"})
+        headers = get.call_args_list[0].kwargs["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer k3y")
+        self.assertIn("X-WoS-Versions", headers)  # who is behind (bot: versions.js)
         self.assertTrue(os.path.exists(self.lua))
         self.assertEqual(self.poll(Reply(200, {"orders": []}), now=1060).call_count, 0)  # not due yet
 

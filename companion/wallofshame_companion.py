@@ -123,6 +123,7 @@ class Sender:
         self.code, self.url, self.key, self.pinned = None, None, None, False
         self.queue = []  # [event, jpeg bytes or None, next try, delay]
         self.warned = False
+        self.game_dirs = []  # for the versions sent with each event (wowpath.version_header)
 
     def set_code(self, code, pinned=False):
         if self.dry_run or self.pinned or code == self.code:
@@ -203,7 +204,8 @@ class Sender:
                     f.write(jpeg)
             return
         files = {"screenshot": ("death.jpg", jpeg, "image/jpeg")} if jpeg else None
-        r = requests.post(self.url, headers={"Authorization": f"Bearer {self.key}"},
+        r = requests.post(self.url, headers={"Authorization": f"Bearer {self.key}",
+                                             **wowpath.version_header(self.game_dirs)},
                           data={"event": json.dumps(ev, ensure_ascii=False)}, files=files, timeout=15)
         if r.status_code == 401:
             raise Refused()
@@ -415,6 +417,7 @@ def main(stop=None):
                     STATUS["wow"] = ("WoW: " + ", ".join(os.path.basename(d) for d in dirs)
                                      if dirs else "WoW: addon not found yet")
                     game_dirs = dirs or game_dirs
+                    sender.game_dirs = game_dirs
                 write_builtin_code(game_dirs)
                 last_detect = time.time()
             if time.time() - last_outbox > OUTBOX_INTERVAL:

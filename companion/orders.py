@@ -357,7 +357,8 @@ class Orders:
         for tag, chars in groups.items():
             try:
                 r = requests.get(request_url(url, tag, chars),
-                                 headers={"Authorization": f"Bearer {key}"}, timeout=15)
+                                 headers={"Authorization": f"Bearer {key}",
+                                          **wowpath.version_header(game_dirs)}, timeout=15)
             except requests.RequestException as e:
                 return self._error(f"orders: request failed, kept the last ones: {e}")
             if r.status_code == 401:

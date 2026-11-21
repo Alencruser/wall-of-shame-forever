@@ -6,10 +6,32 @@ platform's install locations (Windows: Blizzard registry key), the usual install
 """
 
 import os
+import re
 
+import appinfo
 import osplat
 
 ADDON_TOC = os.path.join("Interface", "AddOns", "WallOfShameForever", "WallOfShameForever.toc")
+
+
+def addon_version(game_dirs):
+    """Version of the installed addon (## Version: of its .toc), the highest of the game folders,
+    or "" when none can be read."""
+    found = []
+    for game_dir in game_dirs or []:
+        try:
+            with open(os.path.join(game_dir, ADDON_TOC), encoding="utf-8", errors="replace") as f:
+                m = re.search(r"^##\s*Version:\s*v?(\d+\.\d+\.\d+)", f.read(), re.MULTILINE)
+        except OSError:
+            continue
+        if m:
+            found.append(m.group(1))
+    return max(found, key=lambda v: tuple(map(int, v.split("."))), default="")
+
+
+def version_header(game_dirs):
+    """Sent with every request to the bot: the admins see who is behind (bot: versions.js)."""
+    return {"X-WoS-Versions": f"companion={appinfo.VERSION}; addon={addon_version(game_dirs) or '?'}"}
 
 
 def has_addon(game_dir):
