@@ -75,11 +75,22 @@ end
 
 -- Our own name and realm. On Forever, UnitFullName("player") gives the first name and the LAST
 -- NAME in place of the realm ("Chamy", "Chan"): the real realm comes from GetNormalizedRealmName.
+-- Some days the game gives no realm at all (GetNormalizedRealmName and GetRealmName both ""): the last
+-- realm seen for this character is used (db.realms, kept for that), else the realm stays empty and the
+-- name keeps its last name ("Miss Kin", never "Miss" on realm "Kin").
 local function MyNameAndRealm()
     local name, second = UnitFullName("player")
+    local full = (second and second ~= "") and (name .. " " .. second) or name
     local realm = GetNormalizedRealmName and GetNormalizedRealmName() or nil
-    if not realm or realm == "" then realm = second or "" end
-    if second and second ~= "" and second ~= realm then name = name .. " " .. second end
+    if not realm or realm == "" then
+        local remembered = db and type(db.realms) == "table" and db.realms[full]
+        return full, type(remembered) == "string" and remembered or ""
+    end
+    if second and second ~= "" and second ~= realm then name = full end
+    if db then
+        db.realms = type(db.realms) == "table" and db.realms or {}
+        db.realms[name] = realm
+    end
     return name, realm
 end
 

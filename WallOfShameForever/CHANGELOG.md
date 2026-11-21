@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.6.6 (2026-11-21)
+
+- Fix: when the game gives no realm name (it happened on WoW Forever on 2026-11-21), the addon used
+  the last name as the realm ("Miss" on realm "Kin") and the bot refused deaths, levels and scores.
+  The addon now remembers each character's realm and uses the last one seen, or keeps the full name
+
 ## v0.6.4 (2026-11-20)
 
 - Guild bank: when you open the guild bank, the addon reads its money log (deposits and
