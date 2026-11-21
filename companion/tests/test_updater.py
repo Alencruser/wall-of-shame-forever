@@ -103,6 +103,15 @@ class CheckTest(unittest.TestCase):
             # a background failure keeps the update offered in the menu
             self.assertEqual(updater.check(manual=False), "available")
 
+    def test_check_and_install(self):
+        # "Check for updates and install": installs what it finds, and only then
+        with self.fake_get(RELEASES), mock.patch.object(updater, "VERSION", "0.4.0"),                 mock.patch.object(updater.sys, "platform", "win32"),                 mock.patch.object(updater, "install") as install:
+            updater.check_and_install()
+        install.assert_called_once()
+        with self.fake_get(RELEASES), mock.patch.object(updater, "VERSION", "0.5.0"),                 mock.patch.object(updater, "install") as install:
+            updater.check_and_install()
+        install.assert_not_called()
+
     def test_bad_json(self):
         with self.fake_get({"message": "Not Found"}):
             self.assertEqual(updater.check(manual=True), "uptodate")

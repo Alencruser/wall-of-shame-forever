@@ -257,8 +257,17 @@ def install_async():
     threading.Thread(target=install, daemon=True).start()
 
 
-def check_async(manual=True):
-    threading.Thread(target=check, args=(manual,), daemon=True).start()
+def check_and_install():
+    """"Check for updates" in the menu: the player wants the new version, so one click looks for it
+    and installs it at once (the menu closes on the click, a second one would mean reopening it)."""
+    if check(manual=True) == "available":
+        install()
+
+
+def check_async(manual=True, then_install=False):
+    target = check_and_install if then_install else check
+    args = () if then_install else (manual,)
+    threading.Thread(target=target, args=args, daemon=True).start()
 
 
 # --- Background -----------------------------------------------------------------------------------

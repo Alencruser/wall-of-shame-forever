@@ -76,8 +76,8 @@ def run():
     def install_update(_icon, _item):
         updater.install_async()
 
-    def check_updates(_icon, _item):
-        updater.check_async(manual=True)
+    def check_updates(_icon, _item):  # one click: check, and install what it finds
+        updater.check_async(manual=True, then_install=True)
 
     # same layout as the TrollDiscord tray: status lines, actions, Quit
     menu = pystray.Menu(
@@ -97,7 +97,7 @@ def run():
         pystray.MenuItem(lambda _i: updater.menu_text() or "-", install_update,
                          enabled=lambda _i: updater.clickable(),
                          visible=lambda _i: FROZEN and bool(updater.menu_text())),
-        pystray.MenuItem("Check for updates", check_updates, visible=FROZEN),
+        pystray.MenuItem("Check for updates and install", check_updates, visible=FROZEN),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", quit_app),
     )
