@@ -18,6 +18,8 @@ Compagnon sorti sans annonce : une ligne <!-- sans-annonce: Compagnon X.Y.Z --> 
 (le bot ne la lit pas comme une annonce, le workflow l'accepte à la place de l'entrée).
 -->
 
+<!-- sans-annonce: Compagnon 0.7.6 -->
+
 ## Compagnon 0.7.5
 
 - **Le compagnon dit au bot quelles versions tu utilises** (la sienne et celle de l'addon) : les admins voient qui n'est pas à jour, et peuvent te le rappeler sur Discord… plus ou moins gentiment
