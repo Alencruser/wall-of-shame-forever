@@ -76,6 +76,9 @@ def run():
     def install_update(_icon, _item):
         updater.install_async()
 
+    def toggle_auto_update(_icon, _item):
+        updater.set_auto(not updater.auto_enabled())
+
     def check_updates(_icon, _item):  # one click: check, and install what it finds
         updater.check_async(manual=True, then_install=True)
 
@@ -98,6 +101,8 @@ def run():
                          enabled=lambda _i: updater.clickable(),
                          visible=lambda _i: FROZEN and bool(updater.menu_text())),
         pystray.MenuItem("Check for updates and install", check_updates, visible=FROZEN),
+        pystray.MenuItem("Install updates automatically", toggle_auto_update,
+                         checked=lambda _i: updater.auto_enabled(), visible=FROZEN),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Quit", quit_app),
     )
@@ -118,13 +123,16 @@ def run():
             state, version = updater.STATUS["state"], updater.STATUS["version"]
             new = state != notified["state"] and (
                 state in ("uptodate", "failed", "error")  # results of a click
+                or (state == "downloading" and updater.STATUS["auto"])  # updating by itself
                 or (state == "available" and (updater.STATUS["manual"] or version != notified["version"])))
             notified["state"] = state
             if new:
                 if state == "available":
                     notified["version"] = version
                 if icon.HAS_NOTIFICATION:
-                    icon.notify(updater.menu_text().replace(" - click to", ": menu >"), NAME)
+                    text = (f"Updating to v{version} automatically, the companion restarts"
+                            if state == "downloading" else updater.menu_text().replace(" - click to", ": menu >"))
+                    icon.notify(text, NAME)
         except Exception:  # a notification is a bonus: never stop the updater for it
             pass
 

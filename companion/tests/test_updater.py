@@ -112,6 +112,24 @@ class CheckTest(unittest.TestCase):
             updater.check_and_install()
         install.assert_not_called()
 
+    def test_background_check_installs_unless_turned_off(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(updater, "_data_dir", d):
+            self.assertTrue(updater.auto_enabled())  # on by default
+            with self.fake_get(RELEASES), mock.patch.object(updater, "VERSION", "0.4.0"),                     mock.patch.object(updater.sys, "platform", "win32"),                     mock.patch.object(updater, "install") as install:
+                updater.background_check()
+            install.assert_called_once()
+            updater.set_auto(False)
+            self.assertFalse(updater.auto_enabled())
+            updater.STATUS.update(state="idle")
+            with self.fake_get(RELEASES), mock.patch.object(updater, "VERSION", "0.4.0"),                     mock.patch.object(updater.sys, "platform", "win32"),                     mock.patch.object(updater, "install") as install:
+                self.assertEqual(updater.check(manual=False), "available")
+                updater.STATUS.update(state="idle")
+                updater.background_check()
+            install.assert_not_called()  # only offered in the menu
+            updater.set_auto(True)
+            self.assertTrue(updater.auto_enabled())
+
     def test_bad_json(self):
         with self.fake_get({"message": "Not Found"}):
             self.assertEqual(updater.check(manual=True), "uptodate")

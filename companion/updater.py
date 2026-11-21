@@ -39,7 +39,7 @@ TAG_RE = re.compile(r"^" + re.escape(TAG_PREFIX) + r"(\d+)\.(\d+)\.(\d+)$")
 
 # For the tray menu (app.py). state: idle, checking, uptodate, available, downloading,
 # installing, failed (check failed), error (install failed)
-STATUS = {"state": "idle", "version": "", "progress": 0, "manual": False}
+STATUS = {"state": "idle", "version": "", "progress": 0, "manual": False, "auto": False}  # auto: installing by itself
 
 _lock = threading.Lock()
 _release = None   # the newer release found by the last check
@@ -270,6 +270,41 @@ def check_async(manual=True, then_install=False):
     threading.Thread(target=target, args=args, daemon=True).start()
 
 
+# --- Automatic install ----------------------------------------------------------------------------
+# On by default: the check 30 s after start and the one every 6 hours install what they find. The
+# player can turn it off in the menu (a file "no-auto-update" next to the data remembers it).
+
+AUTO_OFF_FILE = "no-auto-update"
+
+
+def auto_enabled():
+    return not (_data_dir and os.path.exists(os.path.join(_data_dir, AUTO_OFF_FILE)))
+
+
+def set_auto(enabled):
+    if not _data_dir:
+        return
+    path = os.path.join(_data_dir, AUTO_OFF_FILE)
+    try:
+        if enabled:
+            if os.path.exists(path):
+                os.remove(path)
+        else:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("automatic updates turned off in the menu\n")
+        _log(f"update: automatic install {'on' if enabled else 'off'}")
+    except OSError as e:
+        _log(f"update: could not save the automatic install setting: {e!r}")
+
+
+def background_check():
+    """A background check; installs what it finds when automatic updates are on."""
+    if check(manual=False) == "available" and auto_enabled():
+        _log(f"update: installing {STATUS['version']} automatically")
+        _set(auto=True)
+        install()
+
+
 # --- Background -----------------------------------------------------------------------------------
 
 def _cleanup():
@@ -290,7 +325,7 @@ def _loop(stop):
     except Exception as e:
         _log(f"update: cleanup failed: {e!r}")
     while True:
-        check(manual=False)
+        background_check()
         if stop.wait(CHECK_INTERVAL):
             return
 
