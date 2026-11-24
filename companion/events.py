@@ -14,7 +14,8 @@ FIELDS = {
     # professions of the character, read when a profession window is opened (see QueueProfessions)
     "P": ("professions", ["id", "name", "realm", "guild", "level", "class", "time", "battletag",
                           "professions"]),
-    # craft order ticked done or refused by the artisan in game (orders.py fetches the orders)
+    # craft order ticked done or refused by the artisan in game (orders.py fetches the orders), or
+    # received by the buyer (addon 0.6.7, "My orders" tab)
     # technical report for the bot's debug.jsonl (outbox only, never posted): topic + free details
     "X": ("debug", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "topic", "details"]),
     "O": ("order", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "order",
@@ -91,7 +92,7 @@ def parse_payload(payload, source):
         ev["up"] = ev["up"] == "1"  # real level-up (posted), not the login snapshot
     elif kind == "professions":
         ev["professions"] = parse_professions(ev["professions"])
-    elif kind == "order" and ev["status"] not in ("done", "refused"):
+    elif kind == "order" and ev["status"] not in ("done", "refused", "received"):
         return None
     elif kind == "follow":
         ev["done"] = ev["done"] == "1"

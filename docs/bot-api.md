@@ -115,6 +115,9 @@ One `id` per order and status:
 
 - `order`: the order `id` from the orders list; `status`: `done` or `refused`; `reason`: free text
   for a refusal, `""` if none (ignored for `done`)
+- `status` `received` (addon 0.6.7, companion 0.7.8): the **buyer** confirms a done order reached
+  them; the bot applies it only if the order is done and not received yet, and the sender is the buyer
+  (same character, or the buyer's account by battletag or character link); otherwise `200`, ignored
 - the bot applies it only if the order exists, is still pending and the sender (`name`, `realm`,
   case-insensitive) is its artisan; otherwise it answers `200` and ignores it (unknown order,
   already done/refused/cancelled by the buyer, another artisan), so the companion can drop it
@@ -246,12 +249,15 @@ send no `placed`; companions before 0.7.2 ignore it.
     "buyer": "Thrall-Forever", "status": "done", "reason": "", "itemId": 2848,
     "itemName": "Bronze Shortsword", "qty": 2, "note": "", "reply": "Ready on Friday",
     "reagents": [ { "itemId": 2841, "name": "Bronze Bar", "qty": 8 } ],
-    "createdAt": 1793702383, "updatedAt": 1793788783 } ] }
+    "createdAt": 1793702383, "updatedAt": 1793788783, "receivedAt": 0 } ] }
 ```
 
 - `status`: `pending`, `done` or `refused`; `reason`: the artisan's reason for a refusal
 - `artisanClass`: the artisan's class token when the bot knows it, else `null`
 - `reagents`: as above (the addon only adds up those of pending orders); `updatedAt`: last change
+- `receivedAt` (bot 2026-11-24): for a done order, `0` while the hand-over is not confirmed (the
+  addon shows a Received button), else when it was (unix seconds). A done order stays listed until
+  received, then 7 days; the bot marks it received by itself 14 days after it was done
 
 ## Response
 

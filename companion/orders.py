@@ -35,11 +35,12 @@ ORDER_KEYS = ("id", "artisan", "buyer", "itemId", "itemName", "qty", "note", "re
               "createdAt")
 BUYER_KEYS = ("name", "realm", "class", "level")
 REAGENT_KEYS = ("itemId", "name", "qty")
-NUMBER_KEYS = ("itemId", "qty", "createdAt", "updatedAt", "level")
+NUMBER_KEYS = ("itemId", "qty", "createdAt", "updatedAt", "receivedAt", "level")
 MAX_REAGENTS = 20  # a recipe has 6 at most: anything longer is not what the bot sends
 # the player's own orders, as a buyer (bot 2026-11 and later): the addon's "My orders" tab
+# receivedAt (bot 2026-11-24 and later): 0 = done, hand-over not confirmed yet (the addon's Received button)
 PLACED_KEYS = ("id", "artisan", "artisanClass", "buyer", "status", "reason", "itemId", "itemName", "qty",
-               "note", "reply", "reagents", "createdAt", "updatedAt")
+               "note", "reply", "reagents", "createdAt", "updatedAt", "receivedAt")
 PLACED_STATUSES = ("pending", "done", "refused")
 
 IDENTITY_RE = re.compile(r'\["orderIdentity"\]\s*=\s*\{')

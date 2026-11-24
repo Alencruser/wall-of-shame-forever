@@ -11,6 +11,8 @@
 --   2|O|id|name|realm|guild|level|class|time|battletag|order|status|reason
 --   id: name-realm:O:order:status, status: done or refused, reason: may be empty (at most 80
 --   characters, cut further so the payload fits the strip)
+-- The buyer confirms in "My orders" that a done order reached them: same event, status received
+-- (companion 0.7.8 and later passes it; the bot checks the sender is the buyer).
 -- At login the addon writes orderIdentity (battletag and this account's characters) for the
 -- companion, so the bot knows which characters' orders belong to this account.
 -- Loaded after WallOfShameForever.lua, which gives ns.L, ns.GetDB, ns.Identity, ns.Clean,
@@ -120,7 +122,8 @@ end
 local PLACED_STATUS = { pending = true, done = true, refused = true }
 
 -- The player's own orders as a buyer ("My orders" tab): nil when the companion does not write them
--- (older than 0.7.2), else a list. status: pending, done or refused (done / refused: 7 days)
+-- (older than 0.7.2), else a list. status: pending, done or refused (done: until received, then 7
+-- days; refused: 7 days). receivedAt: 0 = done but not received yet, nil = companion older than 0.7.8
 function Orders.ReadPlaced(source)
     if type(source) ~= "table" or type(source.placed) ~= "table" then return nil end
     local list = {}
@@ -142,6 +145,7 @@ function Orders.ReadPlaced(source)
                 reagents = ReadReagents(o.reagents),
                 createdAt = tonumber(o.createdAt) or 0,
                 updatedAt = tonumber(o.updatedAt) or tonumber(o.createdAt) or 0,
+                receivedAt = tonumber(o.receivedAt),
             }
         end
     end
@@ -380,6 +384,12 @@ function Orders.Placed()
     return placedSource
 end
 
+-- A done order the buyer can still confirm: the companion says it is not received (receivedAt 0) and
+-- the button was not clicked since the file was written
+function Orders.CanReceive(o, received)
+    return o.status == "done" and o.receivedAt == 0 and not (received and received[o.id])
+end
+
 -- Puts this item's name in the auction house search and runs it, when the auction house is open
 -- (the classic one, or the newer one). True when a search was started.
 function Orders.AuctionOpen()
@@ -440,6 +450,18 @@ function Orders.Mark(order, status, reason)
     ns.Print(L(status == "done" and "orders_marked_done" or "orders_marked_refused", what))
     Refresh()
     UpdateBadge()
+    return payload
+end
+
+-- The buyer has the item: received, sent to the companion; the button goes until the next file
+function Orders.MarkReceived(order)
+    if not db or not Orders.CanReceive(order, db.ordersReceived) then return nil end
+    db.ordersReceived[order.id] = time()
+    local payload = Orders.Payload(order.id, "received", "")
+    ns.AddToOutbox(payload)
+    QueueStrip(payload)
+    ns.Print(L("orders_marked_received", (order.displayName or order.itemName or "?") .. " \195\151" .. order.qty))
+    Refresh()
     return payload
 end
 
@@ -699,7 +721,10 @@ local function NewItemRow()
 
     r.refuse = MakeButton(r, BTN_REFUSE_W, RED, function(self) ShowRefuse(self:GetParent().order) end)
     r.refuse:SetPoint("RIGHT", -8, 0)
-    r.done = MakeButton(r, BTN_DONE_W, GREEN, function(self) Orders.Mark(self:GetParent().order, "done", "") end)
+    r.done = MakeButton(r, BTN_DONE_W, GREEN, function(self)
+        local o = self:GetParent().order
+        if o.status then Orders.MarkReceived(o) else Orders.Mark(o, "done", "") end -- "My orders": received
+    end)
     r.done:SetPoint("RIGHT", r.refuse, "LEFT", -6, 0)
     -- "My orders" tab: the status instead of the buttons
     r.status = r:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -740,15 +765,22 @@ local function FillHeader(r, entry)
     r.age:SetText(age)
 end
 
-local STATUS_COLOR = { pending = "|cffffd200", done = "|cff4fd04f", refused = "|cffff6060" }
+local STATUS_COLOR = { pending = "|cffffd200", done = "|cff4fd04f", refused = "|cffff6060", received = "|cff9fd4ff" }
+
+local function Received(o)
+    return o.status == "done" and ((o.receivedAt or 0) > 0 or (db and db.ordersReceived[o.id]))
+end
 
 -- One of my orders: status on the right, and under the name what to do about it
 local function FillPlacedText(r, o)
-    r.statusText = STATUS_COLOR[o.status] .. L("orders_status_" .. o.status) .. "|r"
+    local status = Received(o) and "received" or o.status
+    r.statusText = STATUS_COLOR[status] .. L("orders_status_" .. status) .. "|r"
     r.status:SetText(r.statusText)
     local line
-    if o.status == "done" then
-        line = "|cff4fd04f" .. L("orders_pickup", CharName(o.artisan)) .. "|r"
+    if Received(o) then
+        line = "|cff9fd4ff" .. L("orders_received_line", CharName(o.artisan)) .. "|r"
+    elseif o.status == "done" then -- receivedAt 0: the Received button is there
+        line = "|cff4fd04f" .. L(o.receivedAt == 0 and "orders_pickup_confirm" or "orders_pickup", CharName(o.artisan)) .. "|r"
     elseif o.status == "refused" then
         line = o.reason ~= "" and ("|cffff8080" .. L("orders_refused_reason", o.reason) .. "|r") or ""
     else
@@ -772,10 +804,11 @@ local function FillItem(r, entry, index)
     r.name:SetTextColor(qr, qg, qb)
     r.name:SetText(name .. "  |cffffffff\195\151" .. o.qty .. "|r")
     local note
-    if o.status then -- "My orders" tab: status, no buttons
-        r.done:Hide()
+    if o.status then -- "My orders" tab: status, or "Received" on a done order to confirm
+        local canReceive = Orders.CanReceive(o, db and db.ordersReceived)
+        r.done:SetShown(canReceive)
         r.refuse:Hide()
-        r.status:Show()
+        r.status:SetShown(not canReceive)
         note = FillPlacedText(r, o)
     else
         r.done:Show()
@@ -795,7 +828,7 @@ local function FillItem(r, entry, index)
     else
         r.name:SetPoint("LEFT", r.iconFrame, "RIGHT", 10, 0)
     end
-    r.done.label:SetText(ICON_READY .. L("orders_done"))
+    r.done.label:SetText(ICON_READY .. L(o.status and "orders_received_button" or "orders_done"))
     r.refuse.label:SetText(ICON_REFUSE .. L("orders_refuse"))
 end
 
@@ -1460,6 +1493,7 @@ events:SetScript("OnEvent", function(_, event, itemId)
         if not db then return end
         if db.minimapButton == nil then db.minimapButton = true end
         if type(db.ordersHandled) ~= "table" then db.ordersHandled = {} end
+        if type(db.ordersReceived) ~= "table" then db.ordersReceived = {} end
         me = Orders.Me()
         local _, _, _, battleTag = ns.Identity()
         Orders.UpdateIdentity(db, me, battleTag)
@@ -1467,6 +1501,7 @@ events:SetScript("OnEvent", function(_, event, itemId)
         source = Orders.ReadSource(_G.WallOfShameForever_Orders)
         if source then Orders.Prune(db.ordersHandled, source) end
         placedSource = Orders.ReadPlaced(_G.WallOfShameForever_Orders)
+        if placedSource then Orders.Prune(db.ordersReceived, placedSource) end
         ApplyMinimapButton()
         C_Timer.After(8, Orders.Notify) -- after the loading screen and the login chat lines
     elseif event == "BAG_UPDATE_DELAYED" then

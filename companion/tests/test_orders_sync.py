@@ -65,6 +65,11 @@ class PayloadTest(unittest.TestCase):
         ev = events.parse_payload(PAYLOAD.replace("refused|Pas les compos", "done|"), "realtime")
         self.assertEqual((ev["status"], ev["reason"], ev["source"]), ("done", "", "realtime"))
 
+    def test_received_by_the_buyer(self):
+        ev = events.parse_payload(PAYLOAD.replace(":42:refused|", ":42:received|").replace("|42|refused|Pas les compos", "|42|received|"),
+                                  "realtime")
+        self.assertEqual((ev["order"], ev["status"], ev["reason"]), ("42", "received", ""))
+
     def test_bad_status_or_fields(self):
         self.assertIsNone(events.parse_payload(PAYLOAD.replace("|refused|", "|maybe|"), "realtime"))
         self.assertIsNone(events.parse_payload(PAYLOAD + "|extra", "realtime"))
@@ -136,6 +141,10 @@ class RequestTest(unittest.TestCase):
         self.assertEqual((placed[0]["status"], placed[0]["updatedAt"], placed[0]["reagents"][0]["qty"]),
                          ("done", 5, 8))
         self.assertEqual(orders.clean_placed({"orders": []}), [])  # older bot
+        self.assertIsNone(placed[0]["receivedAt"])  # older bot: no Received button in the addon
+        raw["placed"][0]["receivedAt"] = 0
+        self.assertEqual(orders.clean_placed(raw)[0]["receivedAt"], 0)
+        self.assertIn('["receivedAt"] = 0', orders.lua_file([], 1763030000, orders.clean_placed(raw)))
 
 
 def make_game(test, toc="## Interface: 11508\n## Title: Wall of Shame Forever\nCore.lua\n"):

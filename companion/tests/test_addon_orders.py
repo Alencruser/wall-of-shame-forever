@@ -531,3 +531,44 @@ class PlacedTest(unittest.TestCase):
         a = Addon(orders=[order("a")]).login()  # no "placed": companion older than 0.7.2
         win = self.open_placed(a)
         self.assertIn("Mets à jour le compagnon (0.7.2)", win.empty.hint._text)
+
+    def test_received(self):
+        """v0.6.7: a done order not received yet (receivedAt 0) has a Received button that sends a
+        2|O|...|received event; received ones (receivedAt > 0) and an older companion (no receivedAt): none."""
+        a = self.addon([
+            placed("d1", artisan="Liandra-Forever", status="done", created=2, receivedAt=0),
+            placed("d2", artisan="Liandra-Forever", status="done", created=3, receivedAt=1763020000),
+            placed("d3", artisan="Liandra-Forever", status="done", created=4),
+            placed("p1"),
+        ])
+        by_id = {o.id: o for o in a.orders.Placed().values()}
+        self.assertTrue(a.orders.CanReceive(by_id["d1"], a.db.ordersReceived))
+        self.assertFalse(a.orders.CanReceive(by_id["d2"], a.db.ordersReceived))  # already received
+        self.assertFalse(a.orders.CanReceive(by_id["d3"], a.db.ordersReceived))  # companion < 0.7.8
+        self.assertFalse(a.orders.CanReceive(by_id["p1"], a.db.ordersReceived))  # not done
+        self.open_placed(a)
+        rows = [r for r in a.lua_list(a.g.STATE.frames) if a.lua.eval("function(f) return rawget(f, 'order') end")(r)]
+        shown = {r.order.id: r.done.IsShown(r.done) for r in rows if r.order.status}
+        self.assertEqual(shown, {"d1": True, "d2": False, "d3": False, "p1": False})
+        d1 = next(r for r in rows if r.order.id == "d1")
+        self.assertIn("Reçu", d1.done.label._text)
+        self.assertIn("puis clique sur Reçu", d1.note._text)
+        # the click: the event goes out, the button goes, the order shows as received
+        d1.done.GetScript(d1.done, "OnClick")(d1.done)
+        payload = a.strips[-1]
+        self.assertTrue(payload.startswith("2|O|%s:O:d1:received|" % ME))
+        self.assertTrue(payload.endswith("|d1|received|"))
+        self.assertIn(payload, a.lua_list(a.db.outbox))
+        self.assertIsNotNone(a.db.ordersReceived["d1"])
+        self.assertIsNone(a.orders.MarkReceived(by_id["d1"]))  # only once
+        self.assertIn("Commande reçue", a.lua_list(a.g.STATE.chat)[-1])
+        d1 = next(r for r in a.lua_list(a.g.STATE.frames)
+                  if a.lua.eval("function(f) return rawget(f, 'order') end")(r) and r.order.id == "d1")
+        self.assertFalse(d1.done.IsShown(d1.done))
+        self.assertIn("Reçue", d1.statusText)
+
+    def test_received_pruned(self):
+        """Clicks are forgotten once the companion's file no longer lists the order."""
+        a = Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": [placed("d1", status="done", receivedAt=0)]},
+                  db={"ordersReceived": {"d1": 1763030000, "gone": 1763000000}}).login()
+        self.assertEqual(sorted(dict(a.db.ordersReceived)), ["d1"])

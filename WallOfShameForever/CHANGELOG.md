@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.6.7 (2026-11-24)
+
+- Craft orders, "My orders" tab: a done order now has a **Received** button. Click it once you have
+  the item: the artisan and the guild's site see it was handed over (needs companion 0.7.8). Done
+  orders stay in the tab until they are received; nobody confirms within 14 days: received anyway
+
 ## v0.6.6 (2026-11-21)
 
 - Fix: when the game gives no realm name (it happened on WoW Forever on 2026-11-21), the addon used
