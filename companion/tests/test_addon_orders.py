@@ -8,8 +8,10 @@ import unittest
 
 import lupa.lua51 as lua51
 
+import events
+
 ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "WallOfShameForever")
-FILES = ["Locales.lua", "UI.lua", "Hub.lua", "DeathStrip.lua", "WallOfShameForever.lua", "Orders.lua"]
+FILES = ["Locales.lua", "UI.lua", "Hub.lua", "DeathStrip.lua", "WallOfShameForever.lua", "Orders.lua", "Requests.lua"]
 ME = "Chamy Chan-CAMWOWEU5Realm2PvP"
 
 STUBS = r"""
@@ -641,3 +643,80 @@ class PlacedTest(unittest.TestCase):
         a = Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": [placed("d1", status="done", receivedAt=0)]},
                   db={"ordersReceived": {"d1": 1763030000, "gone": 1763000000}}).login()
         self.assertEqual(sorted(dict(a.db.ordersReceived)), ["d1"])
+
+
+class RequestsTest(unittest.TestCase):
+    """v0.8.0: guild item requests (« Demandes » tab): 2|R|... payloads, the bot's list merged with the
+    actions done here, the tab, the item's tooltip."""
+
+    BOT = [{"id": "abc123", "item": 1468, "qty": 5, "reward": "2 po", "note": "Quête des murlocs", "by": "Lwi Zi",
+            "byClass": "MAGE", "at": 1763000000, "takers": "", "mine": False, "taking": False},
+           {"id": "def456", "item": 2589, "qty": 20, "reward": "", "note": "", "by": "Chamy Chan", "byClass": "SHAMAN",
+            "at": 1763000100, "takers": "Lex", "mine": True, "taking": False}]
+
+    def addon(self, bot=None):
+        raw = {"updated": 1763030000, "orders": [], "placed": []}
+        if bot is not None:
+            raw["hub"] = {"requests": bot}
+        return Addon(raw_orders=raw).login()
+
+    def parse(self, payload):
+        return events.parse_payload(payload, "realtime")
+
+    def test_new_request(self):
+        a = self.addon(bot=[])
+        req = a.ns.Requests
+        self.assertEqual(req.New(None, 1, "", ""), (None, "req_err_item"))
+        rid = req.New(1468, 5, "2 po", "Pour la quête|des murlocs")
+        ev = self.parse(a.strips[-1])
+        self.assertEqual((ev["type"], ev["action"], ev["request"], ev["item"], ev["qty"], ev["reward"], ev["note"]),
+                         ("request", "new", rid, 1468, 5, "2 po", "Pour la quête des murlocs"))
+        self.assertIn(a.strips[-1], a.lua_list(a.db.outbox))
+        shown = a.lua_list(req.List())
+        self.assertEqual((shown[0].id, shown[0].mine, shown[0].pending), (rid, True, True))
+        # the bot's list has it now: the local action is forgotten
+        a.g.WallOfShameForever_Orders.hub.requests = a.to_lua([{"id": rid, "item": 1468, "qty": 5, "by": "Chamy Chan",
+                                                                 "mine": True, "takers": "", "taking": False}])
+        shown = a.lua_list(req.List())
+        self.assertEqual(len(shown), 1)
+        self.assertIsNone(shown[0].pending)
+        self.assertIsNone(a.db.requestsLocal[rid])
+
+    def test_take_close_and_tooltip(self):
+        a = self.addon(bot=self.BOT)
+        req = a.ns.Requests
+        shown = {r.id: r for r in a.lua_list(req.List())}
+        self.assertEqual(sorted(shown), ["abc123", "def456"])
+        req.Act(shown["abc123"], "take")
+        ev = self.parse(a.strips[-1])
+        self.assertEqual((ev["action"], ev["request"]), ("take", "abc123"))
+        self.assertTrue({r.id: r for r in a.lua_list(req.List())}["abc123"].taking)
+        req.Act(shown["def456"], "close")  # mine: closed, gone from the tab at once
+        self.assertNotIn("def456", [r.id for r in a.lua_list(req.List())])
+        # the others' open requests for an item (tooltip, loot)
+        self.assertEqual([r.by for r in a.lua_list(req.ForItem(1468))], ["Lwi Zi"])
+        self.assertEqual(a.lua_list(req.ForItem(2589)), [])
+
+    def test_tab(self):
+        a = self.addon(bot=self.BOT)
+        a.ns.Hub.Show("requests")
+        panel = a.g.WallOfShameForeverRequests
+        self.assertTrue(panel.IsShown(panel))
+        self.assertEqual(panel.listCap._text, "Demandes ouvertes (2)")
+        rows = [r for r in a.lua_list(panel.rows) if r.IsShown(r)]
+        self.assertEqual(rows[0].button.label._text, "Je m'en occupe")
+        self.assertEqual(rows[1].button.label._text, "Fermer")
+        self.assertIn("récompense : 2 po", rows[0].line._text)
+        # publish from the form
+        a.ns.Requests.SetItem(4306)
+        panel.form.qty.SetText(panel.form.qty, "3")
+        panel.form.publish.GetScript(panel.form.publish, "OnClick")(panel.form.publish)
+        ev = self.parse(a.strips[-1])
+        self.assertEqual((ev["action"], ev["item"], ev["qty"]), ("new", 4306, 3))
+        self.assertEqual(panel.listCap._text, "Demandes ouvertes (3)")
+
+    def test_without_the_bot(self):
+        a = self.addon()
+        a.ns.Hub.Show("requests")
+        panel = a.g.WallOfShameForeverRequests
+        self.assertIn("compagnon (0.8.0", panel.empty._text)

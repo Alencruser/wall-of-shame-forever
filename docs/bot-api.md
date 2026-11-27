@@ -255,6 +255,12 @@ send no `placed`; companions before 0.7.2 ignore it.
 - `status`: `pending`, `done` or `refused`; `reason`: the artisan's reason for a refusal
 - `artisanClass`: the artisan's class token when the bot knows it, else `null`
 - `reagents`: as above (the addon only adds up those of pending orders); `updatedAt`: last change
+- `hub.requests` (bot 2026-11-27, companion 0.8.0, addon 0.8.0): the guild's open item requests, newest
+  first, 12 at most: [{ id, item, qty, reward, note, by, byClass, at, takers (names, comma separated), mine
+  (asked by this player), taking (this player takes care of it) }]. The actions come from the addon as
+  `request` events: `2|R|id|name|realm|guild|level|class|time|battletag|action|request|item|qty|reward|note`,
+  action `new` (item, qty 1 to 999, reward and note optional), `take`, `drop` (someone else) or `close` (the
+  asker only); the bot ignores (200) an unknown request, a close by someone else, a take by the asker
 - `hub` (bot 2026-11-27, companion 0.7.9, addon 0.7.0): the tabs of the addon's « Bagarre club » window
   for the player (its Discord account, from the battletag or a linked character), already worded by the
   bot: `titles` { bank, follow, craft }, `trophies`, `trophiesTotal`, `next` [{ name, desc, progress,

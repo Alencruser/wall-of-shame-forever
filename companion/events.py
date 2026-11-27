@@ -27,8 +27,13 @@ FIELDS = {
     # end in the outbox too; the bot keeps the highest seconds per follower and start
     "F": ("follow", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "target", "start",
                      "seconds", "done"]),
+    # guild item request (addon 0.8.0, "Demandes" tab): action new (item, qty, reward, note), take, drop
+    # (someone takes care of it, or no longer) or close (by who asked); request: its id
+    "R": ("request", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "action", "request",
+                      "item", "qty", "reward", "note"]),
 }
-NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds")
+NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds", "item", "qty")
+REQUEST_ACTIONS = ("new", "take", "drop", "close")
 
 LUA_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
 STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -97,6 +102,11 @@ def parse_payload(payload, source):
     elif kind == "follow":
         ev["done"] = ev["done"] == "1"
         if not ev["target"] or ev["start"] is None or ev["seconds"] is None:
+            return None
+    elif kind == "request":
+        if ev["action"] not in REQUEST_ACTIONS or not re.fullmatch(r"[0-9a-zA-Z]{4,24}", ev["request"]):
+            return None
+        if ev["action"] == "new" and not (ev["item"] and ev["qty"] and 1 <= ev["qty"] <= 999):
             return None
     elif kind == "banklog":
         ev["lines"] = parse_bank_lines(ev["lines"])

@@ -70,6 +70,17 @@ class PayloadTest(unittest.TestCase):
                                   "realtime")
         self.assertEqual((ev["order"], ev["status"], ev["reason"]), ("42", "received", ""))
 
+    def test_request(self):
+        base = "2|R|Chamy Chan-R:R:1763030000:new|Chamy Chan|R|Bagarre|21|SHAMAN|1763030000|Alen#1234|"
+        ev = events.parse_payload(base + "new|6a1b2c3d123|1468|5|2 po|Pour la quête des murlocs", "realtime")
+        self.assertEqual((ev["type"], ev["action"], ev["request"], ev["item"], ev["qty"], ev["reward"], ev["note"]),
+                         ("request", "new", "6a1b2c3d123", 1468, 5, "2 po", "Pour la quête des murlocs"))
+        ev = events.parse_payload(base + "take|6a1b2c3d123||||", "realtime")
+        self.assertEqual((ev["action"], ev["item"]), ("take", None))
+        self.assertIsNone(events.parse_payload(base + "new|6a1b2c3d123||5||", "realtime"))  # no item
+        self.assertIsNone(events.parse_payload(base + "steal|6a1b2c3d123||||", "realtime"))
+        self.assertIsNone(events.parse_payload(base + "take|bad id!||||", "realtime"))
+
     def test_bad_status_or_fields(self):
         self.assertIsNone(events.parse_payload(PAYLOAD.replace("|refused|", "|maybe|"), "realtime"))
         self.assertIsNone(events.parse_payload(PAYLOAD + "|extra", "realtime"))

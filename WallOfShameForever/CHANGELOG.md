@@ -1,5 +1,12 @@
 # Wall of Shame Forever
 
+## v0.8.0 (2026-11-27)
+
+- Item requests: a new « Demandes » tab in the « Bagarre club » window. Ask the guild for an item (drop it
+  on the slot or Shift+click it: bags, quest log, a link), with a quantity, an optional reward and a note.
+  The guild sees the open requests in the tab and in the item's tooltip (« Asked by … »), and a chat line
+  when looting one; « I'm on it » tells the asker, who closes the request. Needs companion 0.8.0
+
 ## v0.7.2 (2026-11-27)
 
 - Rogues: the lockpicking skill is sent with the professions (to the guild's bot and site, where the

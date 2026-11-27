@@ -438,6 +438,7 @@ local function QueueStrip(payload)
     stripQueue[#stripQueue + 1] = payload
     if not stripBusy then NextStrip() end
 end
+ns.QueueStrip = QueueStrip -- the item requests share the queue (Requests.lua)
 
 -- The artisan's answer: hidden from now on, sent to the companion
 function Orders.Mark(order, status, reason)
