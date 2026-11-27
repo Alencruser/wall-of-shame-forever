@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.8.4 (2026-11-27)
+
+- Orders: an order to the character you play shows under « Ce perso » even when the realm differs (Forever
+  changes it, or gives none): characters are matched by name only, like the bot
+- The login line says for which character the orders are (« 1 commande en attente (pour Isa Lice) »)
+
 ## v0.8.3 (2026-11-27)
 
 - Requests: gifts. On someone's request, « Je donne… » (replaces « Je m'en occupe ») announces how many you

@@ -356,6 +356,21 @@ class PaginationTest(unittest.TestCase):
         self.assertEqual(age(500000, 500000 - 3 * 86400), "il y a 3 j")
 
 
+class RealmTest(unittest.TestCase):
+    """v0.8.4: the realm changes on Forever (another CAMWOWEU number, or empty): orders are matched to the
+    character played by its name only, like the bot."""
+
+    def test_this_character_whatever_the_realm(self):
+        name = ME.rsplit("-", 1)[0]
+        orders = [order("a1", artisan=name + "-CAMWOWEU9Realm7PvP"), order("a2", artisan=name + "-"),
+                  order("b1", artisan="Someone Else-CAMWOWEU5Realm2PvP")]
+        a = Addon(orders=orders).login()
+        self.assertEqual(sorted(o.id for o in a.lua_list(a.orders.List("char"))), ["a1", "a2"])
+        # the login line says for which character
+        self.assertEqual(a.orders.Notify(), 2)
+        self.assertIn("2 commandes en attente (pour %s)" % name, a.lua_list(a.g.STATE.chat)[-1])
+
+
 class WindowTest(unittest.TestCase):
     def test_smoke(self):
         orders = [order("o%02d" % i, buyer="B%d" % (i % 3), created=1763000000 + i) for i in range(14)]

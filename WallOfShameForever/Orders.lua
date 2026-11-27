@@ -33,6 +33,13 @@ local function CharName(full)
     return full:match("^(.+)%-[^%-]*$") or full
 end
 
+-- The key of a character for comparisons: its name only, lower case. On Forever the realm changes
+-- (CAMWOWEU5Realm2PvP, another number another day) or is empty; the bot keys characters by name too.
+local function CharKey(full)
+    return CharName(tostring(full or "")):lower()
+end
+Orders.CharKey = CharKey
+
 -------------------------------------------------------------------------------
 -- Data: no frames here (tested with lupa, see companion/tests/test_orders.py)
 -------------------------------------------------------------------------------
@@ -201,15 +208,15 @@ end
 -- Orders still to answer: scope "char" = made to this character, "account" = to any character
 -- of the account
 function Orders.Pending(list, handled, scope, me, characters)
-    local mine = { [me:lower()] = true }
+    local mine = { [CharKey(me)] = true }
     if scope == "account" then
         for _, character in ipairs(characters or {}) do
-            if type(character) == "string" then mine[character:lower()] = true end
+            if type(character) == "string" then mine[CharKey(character)] = true end
         end
     end
     local pending = {}
     for _, o in ipairs(list or {}) do
-        if not handled[o.id] and mine[o.artisan:lower()] then pending[#pending + 1] = o end
+        if not handled[o.id] and mine[CharKey(o.artisan)] then pending[#pending + 1] = o end
     end
     return pending
 end
@@ -223,7 +230,7 @@ end
 function Orders.Group(pending)
     local groups, byKey = {}, {}
     for _, o in ipairs(pending) do
-        local key = (o.buyer.name .. "-" .. o.buyer.realm):lower()
+        local key = CharKey(o.buyer.name .. "-")
         local group = byKey[key]
         if not group then
             -- label, class: the name on the materials button (both tabs)
@@ -249,7 +256,7 @@ end
 function Orders.GroupPlaced(placed)
     local groups, byKey = {}, {}
     for _, o in ipairs(placed or {}) do
-        local key = o.artisan:lower()
+        local key = CharKey(o.artisan)
         local group = byKey[key]
         if not group then
             group = { key = key, artisan = o.artisan, label = CharName(o.artisan), class = o.artisanClass,
@@ -837,7 +844,7 @@ local function FillItem(r, entry, index)
         r.status:Hide()
         r.statusText = nil
         note = o.note ~= "" and ("\194\171 " .. o.note .. " \194\187") or ""
-        if Scope() == "account" and o.artisan:lower() ~= me:lower() then
+        if Scope() == "account" and CharKey(o.artisan) ~= CharKey(me) then
             local artisan = "|cff8f8f8f" .. L("orders_for", CharName(o.artisan)) .. "|r"
             note = note ~= "" and (artisan .. "  " .. note) or artisan
         end
@@ -1418,9 +1425,21 @@ local function CreateToast()
 end
 
 function Orders.Notify()
-    local count = #Orders.List("account")
+    local list = Orders.List("account")
+    local count = #list
     if count == 0 then return 0 end
     local text = L(count == 1 and "orders_count_one" or "orders_count", count)
+    -- for which characters (« pour Isa Lice, Chamy Chan »): the tab shows this character's by default
+    local names, seen = {}, {}
+    for _, o in ipairs(list) do
+        local k = CharKey(o.artisan)
+        if not seen[k] then
+            seen[k] = true
+            names[#names + 1] = CharName(o.artisan)
+        end
+    end
+    if #names > 3 then names = { names[1], names[2], names[3], "\226\128\166" } end
+    text = L("orders_for_chars", text, table.concat(names, ", "))
     ns.Print(L("orders_chat", text))
     if not toast then CreateToast() end
     toast.title:SetText(text)
