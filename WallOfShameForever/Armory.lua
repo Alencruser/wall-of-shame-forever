@@ -6,7 +6,8 @@
 --   gear: slot=item.enchant.suffix.ilvl.quality, separated by ";" (inventory slots 1 to 19), or "off"
 --   stats: key=value, separated by ";" (see STATS; a value the client does not give is left out)
 --   talents: tree/points/talent,talent,... trees separated by ";"; talent: spell.tier.column.rank.max.name
---   (spell: the talent's spell from its tooltip, 0 if the client did not give it)
+--   (spell: the talent's spell, 0 if the client did not give it). WoW Forever (trait tree): no tree name, the
+--   field holds "@" and the links between talents instead: "@1.2>3.2 2.3>3.3" (from tier.column to tier.column)
 --   id: name-realm:G:time, a new one per reading (the bot keeps the latest)
 -- Loaded after WallOfShameForever.lua, which gives ns.GetDB, ns.Identity, ns.Clean, ns.AddToOutbox.
 
@@ -178,7 +179,11 @@ function Armory.ReadTraitTalents()
                 local def = entry and entry.definitionID and Call(T.GetDefinitionInfo, entry.definitionID)
                 local spell = def and (def.overriddenSpellID or def.spellID)
                 if spell then
-                    talents[#talents + 1] = { x = node.posX, y = node.posY, spell = spell,
+                    local targets = {}
+                    for _, edge in ipairs(node.visibleEdges or {}) do
+                        if edge.targetNode then targets[#targets + 1] = edge.targetNode end
+                    end
+                    talents[#talents + 1] = { id = nodeID, targets = targets, x = node.posX, y = node.posY, spell = spell,
                         rank = tonumber(node.activeRank or node.currentRank) or 0, max = tonumber(node.maxRanks) or 0,
                         name = (def.overrideName and def.overrideName ~= "") and def.overrideName or SpellName(spell) }
                 end
@@ -201,14 +206,23 @@ function Armory.ReadTraitTalents()
             minX, minY = math.min(minX, t.x), math.min(minY, t.y)
         end
         table.sort(group, function(a, b) return a.y < b.y or (a.y == b.y and a.x < b.x) end)
-        local list, points = {}, 0
+        local list, points, place = {}, 0, {}
+        for _, t in ipairs(group) do
+            t.tier = math.floor((t.y - minY) / STEP + 0.5) + 1
+            t.column = math.floor((t.x - minX) / STEP + 0.5) + 1
+            place[t.id] = t.tier .. "." .. t.column
+        end
+        local links = {}
         for _, t in ipairs(group) do
             points = points + t.rank
-            list[#list + 1] = table.concat({ t.spell, math.floor((t.y - minY) / STEP + 0.5) + 1,
-                math.floor((t.x - minX) / STEP + 0.5) + 1, t.rank, t.max, CleanName(t.name) }, ".")
+            list[#list + 1] = table.concat({ t.spell, t.tier, t.column, t.rank, t.max, CleanName(t.name) }, ".")
+            for _, target in ipairs(t.targets) do
+                if place[target] then links[#links + 1] = place[t.id] .. ">" .. place[target] end
+            end
         end
-        -- no name from the game: the bot names the trees by class and order
-        out[#out + 1] = "/" .. points .. "/" .. table.concat(list, ",")
+        -- no name from the game: the bot names the trees by class and order. The tree's name field carries the
+        -- links between talents instead (v0.9.2, the companion 0.8.3 passes it as it is): "@tier.col>tier.col …"
+        out[#out + 1] = "@" .. table.concat(links, " ") .. "/" .. points .. "/" .. table.concat(list, ",")
     end
     return table.concat(out, ";")
 end

@@ -132,7 +132,8 @@ GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil
 -- WoW Forever: one trait tree, the class's trees side by side (positions as the real client gives them)
 local NODES = {
     { ID = 1, posX = 1620, posY = 2130, activeRank = 2, maxRanks = 5, entryIDs = { 11 }, activeEntry = { entryID = 11 } },
-    { ID = 2, posX = 1020, posY = 2730, activeRank = 0, maxRanks = 3, entryIDs = { 12 } },
+    { ID = 2, posX = 1020, posY = 2730, activeRank = 0, maxRanks = 3, entryIDs = { 12 },
+      visibleEdges = { { targetNode = 3, type = 2 }, { targetNode = 5, type = 2 } } },
     { ID = 3, posX = 1620, posY = 5730, activeRank = 1, maxRanks = 1, entryIDs = { 13 } },
     { ID = 4, posX = 5020, posY = 2130, activeRank = 5, maxRanks = 5, entryIDs = { 14 } },
     { ID = 5, posX = 6820, posY = 3930, activeRank = 0, maxRanks = 2, entryIDs = { 15 }, isVisible = false },
@@ -161,7 +162,8 @@ class TraitTalentsTest(unittest.TestCase):
         with open(os.path.join(ADDON, "Armory.lua"), encoding="utf-8") as f:
             load(f.read(), a.ns)
         trees = events.parse_talents(a.ns.Armory.ReadTalents())
-        self.assertEqual([(t["name"], t["points"], len(t["talents"])) for t in trees], [("", 3, 3), ("", 5, 1)])
+        # no name from the game: the name field carries the links (a hidden talent is left out)
+        self.assertEqual([(t["name"], t["points"], len(t["talents"])) for t in trees], [("@2.1>7.2", 3, 3), ("@", 5, 1)])
         first = trees[0]["talents"]
         self.assertEqual(first[0], {"spell": 16035, "tier": 1, "column": 2, "rank": 2, "max": 5, "name": "Commotion"})
         self.assertEqual((first[1]["tier"], first[1]["column"], first[1]["rank"]), (2, 1, 0))

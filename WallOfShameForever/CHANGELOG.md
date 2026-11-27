@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.9.2 (2026-11-27)
+
+- Armurerie: the lines between talents (« this talent leads to that one ») are sent too, so the site draws
+  them like the game
+
 ## v0.9.1 (2026-11-27)
 
 - Armurerie: talents read on WoW Forever, which has no Classic talent functions: the 3 trees, each talent's
