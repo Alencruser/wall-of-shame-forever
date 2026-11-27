@@ -255,6 +255,14 @@ send no `placed`; companions before 0.7.2 ignore it.
 - `status`: `pending`, `done` or `refused`; `reason`: the artisan's reason for a refusal
 - `artisanClass`: the artisan's class token when the bot knows it, else `null`
 - `reagents`: as above (the addon only adds up those of pending orders); `updatedAt`: last change
+- `hub` (bot 2026-11-27, companion 0.7.9, addon 0.7.0): the tabs of the addon's « Bagarre club » window
+  for the player (its Discord account, from the battletag or a linked character), already worded by the
+  bot: `titles` { bank, follow, craft }, `trophies`, `trophiesTotal`, `next` [{ name, desc, progress,
+  share }], `rank`, `rankOf`, `rankMove`, `bank` { goal, moneyText, targetText, share, milestones
+  [{ percent, reached }], mine, record }, `challenges` [{ title, progress, share, starts, ends,
+  upcoming, reward }], `activities` [{ label, title, at, by, members, level }]. `null` when the bot does
+  not know the player. The companion writes it as `hub` in the addon's file, within limits (depth 4,
+  12 items per list, 200 characters per text)
 - `receivedAt` (bot 2026-11-24): for a done order, `0` while the hand-over is not confirmed (the
   addon shows a Received button), else when it was (unix seconds). A done order stays listed until
   received, then 7 days; the bot marks it received by itself 14 days after it was done

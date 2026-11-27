@@ -9,7 +9,7 @@ import unittest
 import lupa.lua51 as lua51
 
 ADDON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "WallOfShameForever")
-FILES = ["Locales.lua", "DeathStrip.lua", "WallOfShameForever.lua", "Orders.lua"]
+FILES = ["Locales.lua", "UI.lua", "Hub.lua", "DeathStrip.lua", "WallOfShameForever.lua", "Orders.lua"]
 ME = "Chamy Chan-CAMWOWEU5Realm2PvP"
 
 STUBS = r"""
@@ -369,7 +369,7 @@ class WindowTest(unittest.TestCase):
         win = a.g.WallOfShameForeverOrders
         self.assertTrue(win.IsShown(win))
         self.assertEqual(win.title._text, "Commandes de Chamy Chan")
-        self.assertEqual(win.pageText._text, "Page 1/2")  # 600 px high since v0.6.2
+        self.assertEqual(win.pageText._text, "Page 1/3")  # the « Commandes » tab of the window since v0.7.0
         self.assertEqual(win.total._text, "15 commandes en attente")
         self.assertTrue(a.g.STATE.requested[99999])  # unknown item asked to the server
         a.g.Fire("GET_ITEM_INFO_RECEIVED", 99999, False)
@@ -394,6 +394,75 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(win.title._text, "Orders for Chamy Chan")
         a.g.SlashCmdList.WALLOFSHAMEFOREVER("commandes")
         self.assertFalse(win.IsShown(win))
+
+
+
+HUB = {
+    "titles": {"bank": "Banquier du club", "follow": "", "craft": "Compagnon"},
+    "trophies": 8, "trophiesTotal": 15,
+    "next": [{"name": "Fidèle", "desc": "Faire 10 dépôts", "progress": "7 / 10", "share": 0.7}],
+    "rank": 1, "rankOf": 7, "rankMove": 2,
+    "bank": {"goal": "Onglet de banque", "target": 1000000, "money": 466504, "targetText": "100 po",
+             "moneyText": "46 po 65 a", "share": 0.466,
+             "milestones": [{"percent": 25, "reached": True}, {"percent": 50, "reached": False}],
+             "mine": "19 po", "record": "10 po par Alencruser"},
+    "challenges": [{"title": "Remplir la banque", "progress": "64 po / 100 po", "share": 0.64,
+                    "ends": 1764500000, "starts": 1763000000, "upcoming": False, "reward": "Un pet"}],
+    "activities": [{"label": "Donjon", "title": "Mortemines", "at": 1763200000, "by": "Lex", "members": 3,
+                    "level": "18-23"}],
+}
+
+
+class HubTest(unittest.TestCase):
+    """The « Bagarre club » window (v0.7.0): tabs, the bot's data through the companion's file."""
+
+    def test_tabs_with_the_bots_data(self):
+        a = Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": [], "hub": HUB}).login()
+        hub = a.ns.Hub
+        hub.Show("titles")
+        self.assertTrue(hub.IsShown("titles"))
+        p = hub.Panel("titles")
+        self.assertFalse(p.noData.IsShown(p.noData))
+        self.assertEqual(p.titleLines[1]._text, "Banque : Banquier du club")
+        self.assertIn("pas encore", p.titleLines[2]._text)
+        self.assertEqual(p.trophies._text, "8 / 15")
+        self.assertEqual(p.rank._text, "n°1")
+        self.assertIn("+2 cette semaine", p.rankText._text)
+        self.assertEqual(p.next[1].count._text, "7 / 10")
+        hub.Show("goals")
+        g = hub.Panel("goals")
+        self.assertEqual(g.goal._text, "Onglet de banque")
+        self.assertEqual(g.amount._text, "46 po 65 a / 100 po")
+        self.assertEqual(g.mine._text, "Ta part : 19 po")
+        self.assertEqual(g.challenges[1].name._text, "Remplir la banque")
+        self.assertIn("récompense : Un pet", g.challenges[1].desc._text)
+        self.assertFalse(g.challenges[2].IsShown(g.challenges[2]))
+        hub.Show("events")
+        e = hub.Panel("events")
+        self.assertEqual(e.rows[1].title._text, "Mortemines")
+        self.assertIn("Organisé par Lex · 3 inscrit(s)", e.rows[1].by._text)
+        self.assertFalse(e.rows[2].IsShown(e.rows[2]))
+        # one tab shown at a time, Escape-style close hides the panel too
+        self.assertFalse(hub.Panel("titles").IsShown(hub.Panel("titles")))
+        hub.Hide()
+        self.assertFalse(hub.IsShown())
+
+    def test_without_the_bots_data(self):
+        a = Addon(orders=[order("a")]).login()  # a companion older than 0.7.9: no "hub"
+        a.ns.Hub.Show("goals")
+        g = a.ns.Hub.Panel("goals")
+        self.assertTrue(g.noData.IsShown(g.noData))
+        self.assertIn("compagnon (0.7.9", g.noData._text)
+
+    def test_slash_commands_open_the_window(self):
+        a = Addon(orders=[order("a")]).login()
+        a.g.SlashCmdList.WALLOFSHAMEFOREVER("")
+        self.assertTrue(a.ns.Hub.IsShown("guild"))
+        a.g.SlashCmdList.WALLOFSHAMEFOREVER("commandes")
+        self.assertTrue(a.ns.Hub.IsShown("orders"))
+        a.g.SlashCmdList.WALLOFSHAMEFOREVER("options")
+        opts = a.g.WallOfShameForeverOptions
+        self.assertTrue(opts.IsShown(opts))
 
 
 if __name__ == "__main__":

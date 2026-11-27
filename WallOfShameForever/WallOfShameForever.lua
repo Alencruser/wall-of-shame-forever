@@ -575,11 +575,14 @@ local function FormatSeen(m)
 end
 
 local HEADERS = { "col_name", "col_level", "col_zone", "col_seen", "col_deaths" }
+-- columns of the roster tab, in the « Bagarre club » window (Hub.lua)
+local COL_X = { 0, 250, 320, 560, 700 }
+local COL_W = { 240, 60, 230, 130, 120 }
+local ROW_H = 24
 
 local function RefreshWindow()
     if not window or not window:IsShown() then return end
     for c, key in ipairs(HEADERS) do window.headers[c]:SetText(L(key)) end
-    window.optionsButton:SetText(L("options_button"))
 
     local list = {}
     for name, m in pairs(db.members) do
@@ -592,23 +595,26 @@ local function RefreshWindow()
         return a.name < b.name
     end)
 
-    local child = window.scroll:GetScrollChild()
+    local child = window.scroll.child
     for i, entry in ipairs(list) do
         local row = rows[i]
         if not row then
             row = CreateFrame("Frame", nil, child)
-            row:SetSize(500, 16)
-            row:SetPoint("TOPLEFT", 0, -(i - 1) * 16)
+            row:SetHeight(ROW_H)
+            row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
+            row:SetPoint("RIGHT", child, "RIGHT", -10, 0)
             row.cols = {}
-            local x = { 0, 150, 195, 345, 425 }
-            local w = { 145, 40, 145, 75, 60 }
             for c = 1, 5 do
-                local fs = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                fs:SetPoint("LEFT", x[c], 0)
-                fs:SetWidth(w[c])
+                local fs = row:CreateFontString(nil, "OVERLAY", c == 1 and "GameFontHighlight" or "GameFontHighlightSmall")
+                fs:SetPoint("LEFT", COL_X[c] + 8, 0)
+                fs:SetWidth(COL_W[c])
                 fs:SetJustifyH("LEFT")
+                fs:SetWordWrap(false)
                 row.cols[c] = fs
             end
+            row.line = ns.UI.Line(row, 0.12)
+            row.line:SetPoint("BOTTOMLEFT", 0, 0)
+            row.line:SetPoint("BOTTOMRIGHT", 0, 0)
             rows[i] = row
         end
         local m = entry.m
@@ -622,59 +628,47 @@ local function RefreshWindow()
         row:Show()
     end
     for i = #list + 1, #rows do rows[i]:Hide() end
-    child:SetHeight(math.max(1, #list * 16))
-    window.count:SetText(L("member_count", #list))
+    window.scroll:SetContentHeight(#list * ROW_H)
+    window.count:SetText(L("member_count", #list) .. "    |cff33ff99*|r " .. L("roster_addon_mark"))
 end
 
-local function CreateWindow()
-    window = CreateFrame("Frame", "WallOfShameForeverFrame", UIParent, "BasicFrameTemplateWithInset")
-    window:SetSize(540, 400)
-    window:SetPoint("CENTER")
-    window:SetMovable(true)
-    window:EnableMouse(true)
-    window:RegisterForDrag("LeftButton")
-    window:SetScript("OnDragStart", window.StartMoving)
-    window:SetScript("OnDragStop", window.StopMovingOrSizing)
-    window:SetFrameStrata("DIALOG")
-    tinsert(UISpecialFrames, "WallOfShameForeverFrame") -- closes with Escape
-
-    window.title = window:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    window.title:SetPoint("TOP", 0, -6)
-    window.title:SetText("Wall of Shame Forever")
+-- The roster tab of the « Bagarre club » window: a panel with column titles and a scrolling list
+local function CreateWindow(parent)
+    local UI = ns.UI
+    window = CreateFrame("Frame", "WallOfShameForeverFrame", parent)
+    window:SetAllPoints()
+    UI.Panel(window)
 
     window.headers = {}
-    local x = { 0, 150, 195, 345, 425 }
     for c = 1, 5 do
-        local h = window:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        h:SetPoint("TOPLEFT", 16 + x[c], -32)
+        local h = UI.Caption(window, 14)
+        h:SetPoint("TOPLEFT", 14 + COL_X[c], -12)
         window.headers[c] = h
     end
+    local line = UI.Line(window, 0.35)
+    line:SetPoint("TOPLEFT", 10, -34)
+    line:SetPoint("TOPRIGHT", -10, -34)
 
-    window.scroll = CreateFrame("ScrollFrame", nil, window, "UIPanelScrollFrameTemplate")
-    window.scroll:SetPoint("TOPLEFT", 16, -50)
-    window.scroll:SetPoint("BOTTOMRIGHT", -32, 30)
-    local child = CreateFrame("Frame", nil, window.scroll)
-    child:SetSize(500, 1)
-    window.scroll:SetScrollChild(child)
+    window.scroll = UI.Scroll(window)
+    window.scroll:SetPoint("TOPLEFT", 6, -38)
+    window.scroll:SetPoint("BOTTOMRIGHT", -8, 34)
 
-    window.count = window:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    window.count:SetPoint("BOTTOMLEFT", 16, 10)
-
-    window.optionsButton = CreateFrame("Button", nil, window, "UIPanelButtonTemplate")
-    window.optionsButton:SetSize(110, 20)
-    window.optionsButton:SetPoint("BOTTOMRIGHT", -12, 6)
-    window.optionsButton:SetScript("OnClick", function() ToggleOptions(true) end)
+    window.count = UI.Text(window, "GameFontHighlightSmall", UI.MUTED)
+    window.count:SetPoint("BOTTOMLEFT", 16, 12)
 
     window:SetScript("OnShow", function()
         RequestRoster()
         RefreshWindow()
     end)
     window:Hide()
+    return window
 end
 
+ns.Hub.Register({ key = "guild", order = 10, label = function() return L("hub_tab_guild") end,
+    build = CreateWindow, refresh = function() RefreshWindow() end })
+
 local function ToggleWindow()
-    if not window then CreateWindow() end
-    if window:IsShown() then window:Hide() else window:Show() end
+    ns.Hub.Toggle("guild")
 end
 
 -------------------------------------------------------------------------------
@@ -1718,19 +1712,27 @@ local function Checked(cb)
 end
 
 local function CreateOptions()
-    options = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent, "BasicFrameTemplateWithInset")
-    options:SetSize(360, 520)
-    options:SetPoint("CENTER")
-    options:SetMovable(true)
-    options:EnableMouse(true)
-    options:RegisterForDrag("LeftButton")
-    options:SetScript("OnDragStart", options.StartMoving)
-    options:SetScript("OnDragStop", options.StopMovingOrSizing)
-    options:SetFrameStrata("DIALOG")
+    -- the window (same look as « Bagarre club », UI.lua) holds `options`, where the controls go
+    local UI = ns.UI
+    local win = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent)
+    win:SetSize(390, 640)
+    win:SetFrameStrata("FULLSCREEN_DIALOG")
+    win:SetToplevel(true)
+    UI.Window(win)
+    UI.Movable(win, db, "optionsPosition")
+    UI.Appear(win, db)
     tinsert(UISpecialFrames, "WallOfShameForeverOptions") -- closes with Escape
+    local close = UI.Close(win, function() win:Hide() end)
+    close:SetPoint("TOPRIGHT", -24, -24)
 
-    options.title = options:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    options.title:SetPoint("TOP", 0, -6)
+    options = CreateFrame("Frame", nil, win)
+    options:SetPoint("TOPLEFT", 22, -40)
+    options:SetPoint("BOTTOMRIGHT", -22, 20)
+    options.win = win
+
+    -- title on the ribbon, over the top of the frame
+    options.title = UI.Ribbon(win, 18)
+    options.title:SetPoint("TOP", 0, 14)
 
     options.checks = {}
     local function Bound(key, x, y)
@@ -1846,13 +1848,15 @@ local function CreateOptions()
     options.stripHint:SetWidth(200)
     options.stripHint:SetJustifyH("LEFT")
 
-    options.test = CreateFrame("Button", nil, options, "UIPanelButtonTemplate")
-    options.test:SetSize(200, 24)
-    options.test:SetPoint("BOTTOM", 0, 16)
-    options.test:SetScript("OnClick", TestBanners)
+    -- Windows: fades and slides (off for those who want none)
+    options.windowHeading = Heading(options, -462)
+    options.animations = Bound("animations", 20, -480)
+
+    options.test = ns.UI.Button(options, { width = 220, onClick = TestBanners })
+    options.test:SetPoint("BOTTOM", 0, 6)
 
     options:SetScript("OnShow", function() RefreshOptions() end)
-    options:Hide()
+    win:Hide()
 end
 
 -- greyed out and not clickable when it has no effect
@@ -1873,11 +1877,12 @@ RefreshOptions = function()
     options.mapHeading:SetText(L("sect_map"))
     options.languageHeading:SetText(L("sect_language"))
     local labels = { popups = "opt_popups", selfBanner = "opt_self", sound = "opt_sound",
-        shareLocation = "opt_share_location" }
+        shareLocation = "opt_share_location", animations = "opt_animations" }
     for _, cb in ipairs(options.checks) do
         cb.label:SetText(L(labels[cb.key]))
-        cb:SetChecked(db[cb.key] and true or false)
+        cb:SetChecked(db[cb.key] ~= false and (db[cb.key] and true or cb.key == "animations"))
     end
+    options.windowHeading:SetText(L("sect_window"))
     options.volumeLabel:SetText(L("opt_volume"))
     options.volume.refreshing = true
     options.volume:SetValue(db.volume)
@@ -1902,14 +1907,20 @@ RefreshOptions = function()
     end
     options.stripName:SetText(L("strip_pos_" .. stripPos))
     options.stripHint:SetText(L("opt_strip_hint"))
-    options.test:SetText(L("btn_test"))
+    options.test:SetLabel(L("btn_test"))
 end
 
 ToggleOptions = function(show)
     if not options then CreateOptions() end
-    if show == nil then show = not options:IsShown() end
-    if show then options:Show() else options:Hide() end
+    if show == nil then show = not options.win:IsShown() end
+    if show then
+        options.win:Show()
+        RefreshOptions()
+    else
+        options.win:Hide()
+    end
 end
+ns.ToggleOptions = function(show) ToggleOptions(show) end
 
 -- Game menu > Options > AddOns: a page with a button to our panel (the panel stays our own,
 -- so it looks the same on every client)

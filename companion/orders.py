@@ -175,6 +175,39 @@ def clean_placed(data):
     return placed
 
 
+# the addon's « Bagarre club » window (addon 0.7.0): titles, achievements, activities, bank goal and
+# challenges of the player, already worded by the bot. Kept as it comes, within these limits.
+HUB_MAX_DEPTH = 4
+HUB_MAX_ITEMS = 12
+HUB_MAX_TEXT = 200
+HUB_KEY_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,30}")
+
+
+def clean_hub(data):
+    """The "hub" of a reply: nested dicts and lists of strings, numbers and booleans, cut to sane sizes;
+    None when the bot sends none (older bot, or a player it does not know)."""
+    def clean(value, depth):
+        if isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, str):
+            return value[:HUB_MAX_TEXT]
+        if depth >= HUB_MAX_DEPTH:
+            return None
+        if isinstance(value, dict):
+            out = {}
+            for k, v in list(value.items())[:40]:
+                if isinstance(k, str) and HUB_KEY_RE.fullmatch(k):
+                    v = clean(v, depth + 1)
+                    if v is not None:
+                        out[k] = v
+            return out
+        if isinstance(value, list):
+            return [v for v in (clean(v, depth + 1) for v in value[:HUB_MAX_ITEMS]) if v is not None]
+        return None
+    hub = data.get("hub") if isinstance(data, dict) else None
+    return clean(hub, 0) if isinstance(hub, dict) else None
+
+
 def merge(order_lists):
     """One list, each order once, oldest first (then by id): the same orders give the same file."""
     by_id = {}
@@ -226,15 +259,17 @@ def lua_value(value, indent=""):
     return "{\n" + "\n".join(items) + "\n" + indent + "}" if items else "{}"
 
 
-def lua_file(orders, updated, placed=()):
-    """orders: to craft (artisan side); placed: the player's own (buyer side, "My orders" tab)."""
+def lua_file(orders, updated, placed=(), hub=None):
+    """orders: to craft (artisan side); placed: the player's own (buyer side, "My orders" tab);
+    hub: the tabs of the addon's « Bagarre club » window (titles, activities, goals), when the bot sends it."""
     return ("-- Written by the Wall of Shame Forever companion: craft orders for the addon.\n"
             "-- Rewritten when the orders change; edits here are lost.\n"
             f"{GLOBAL} = {{\n"
             f'\t["updated"] = {int(updated)},\n'
             f'\t["orders"] = {lua_value(orders, chr(9))},\n'
             f'\t["placed"] = {lua_value(list(placed), chr(9))},\n'
-            "}\n")
+            + (f'\t["hub"] = {lua_value(hub, chr(9))},\n' if hub else "")
+            + "}\n")
 
 
 def toc_file(interface):
@@ -278,7 +313,7 @@ def _without_updated(text):
     return UPDATED_RE.sub('["updated"] = 0', text)
 
 
-def write_orders(game_dir, orders, now=None, placed=()):
+def write_orders(game_dir, orders, now=None, placed=(), hub=None):
     """Writes the orders addon in that game folder (only where WallOfShameForever is installed).
     True when a file was written."""
     if not wowpath.has_addon(game_dir):
@@ -286,7 +321,7 @@ def write_orders(game_dir, orders, now=None, placed=()):
     folder = os.path.join(game_dir, "Interface", "AddOns", FOLDER)
     os.makedirs(folder, exist_ok=True)
     toc = _write_if_changed(os.path.join(folder, TOC_FILE), toc_file(addon_interface(game_dir)))
-    lua = _write_if_changed(os.path.join(folder, LUA_FILE), lua_file(orders, now or time.time(), placed),
+    lua = _write_if_changed(os.path.join(folder, LUA_FILE), lua_file(orders, now or time.time(), placed, hub),
                             same=lambda a, b: _without_updated(a) == _without_updated(b))
     return toc or lua
 
@@ -354,7 +389,7 @@ class Orders:
         groups = self.identities(texts)
         if not groups:
             return self._error("orders: no character known yet (log in once with the addon)")
-        results, placed_lists = [], []
+        results, placed_lists, hub = [], [], None
         for tag, chars in groups.items():
             try:
                 r = requests.get(request_url(url, tag, chars),
@@ -378,6 +413,7 @@ class Orders:
                 return self._error("orders: unexpected reply from the bot, kept the last ones")
             results.append(orders)
             placed_lists.append(clean_placed(r.json()))
+            hub = hub or clean_hub(r.json())  # the first account the bot knows
         with self.lock:
             self.last_error = None
         orders = merge(results)
@@ -385,7 +421,7 @@ class Orders:
         written = False
         for game_dir in game_dirs:
             try:
-                written = write_orders(game_dir, orders, now, placed) or written
+                written = write_orders(game_dir, orders, now, placed, hub) or written
             except OSError as e:
                 self.log(f"orders: could not write them to {game_dir}: {e}")
         with self.lock:

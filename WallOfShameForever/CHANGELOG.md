@@ -1,5 +1,14 @@
 # Wall of Shame Forever
 
+## v0.7.0 (2026-11-27)
+
+- New look: one « Bagarre club » window in the guild site's style (red frame with a gold rim, titles
+  on a red ribbon, gold buttons), with tabs: Guild (the roster), Orders, Achievements (your titles,
+  achievements unlocked, the next ones, your bank ranking), Activities (the planned outings) and
+  Goals (the guild bank goal and the guild challenges). The last three come from the guild's Discord
+  bot through the companion (0.7.9 or later). The options window has the same look, and window
+  animations can be turned off there
+
 ## v0.6.7 (2026-11-24)
 
 - Craft orders, "My orders" tab: a done order now has a **Received** button. Click it once you have

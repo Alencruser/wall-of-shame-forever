@@ -146,6 +146,26 @@ class RequestTest(unittest.TestCase):
         self.assertEqual(orders.clean_placed(raw)[0]["receivedAt"], 0)
         self.assertIn('["receivedAt"] = 0', orders.lua_file([], 1763030000, orders.clean_placed(raw)))
 
+    def test_hub(self):
+        """The tabs of the addon's « Bagarre club » window (0.7.9): passed as they come, within limits."""
+        raw = {"orders": [], "hub": {
+            "titles": {"bank": "Banquier", "bad key!": "x"},
+            "next": [{"name": "Fidèle", "share": 0.7}] * 30,
+            "bank": {"goal": "a" * 500, "milestones": [{"percent": 25, "reached": True}]},
+            "deep": {"a": {"b": {"c": {"d": "too deep"}}}},
+        }}
+        hub = orders.clean_hub(raw)
+        self.assertEqual(hub["titles"], {"bank": "Banquier"})
+        self.assertEqual(len(hub["next"]), orders.HUB_MAX_ITEMS)
+        self.assertEqual(len(hub["bank"]["goal"]), orders.HUB_MAX_TEXT)
+        self.assertEqual(hub["bank"]["milestones"], [{"percent": 25, "reached": True}])
+        self.assertEqual(hub["deep"], {"a": {"b": {}}})
+        self.assertIsNone(orders.clean_hub({"orders": []}))  # older bot, or a player it does not know
+        lua = orders.lua_file([], 1763030000, [], hub)
+        self.assertIn('["hub"] = {', lua)
+        self.assertIn('["bank"] = "Banquier"', lua)
+        self.assertNotIn('["hub"]', orders.lua_file([], 1763030000, []))
+
 
 def make_game(test, toc="## Interface: 11508\n## Title: Wall of Shame Forever\nCore.lua\n"):
     game = tempfile.mkdtemp()

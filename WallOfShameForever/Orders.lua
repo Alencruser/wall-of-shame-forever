@@ -487,10 +487,11 @@ local ICON_REFUSE = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14:14|t "
 local TITLE_FONT = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\LilitaOne.ttf"
 
 -- Two columns: the orders on the left, their materials on the right
-local WIDTH, HEIGHT = 790, 600
+-- the « Commandes » tab of the « Bagarre club » window (Hub.lua): its content area
+local WIDTH, HEIGHT = 836, 472
 local HEADER_H, ITEM_H = 28, 46
-local LIST_TOP, LIST_BOTTOM = 98, 46 -- list area inside the window
-local LIST_W = 480                   -- orders column
+local LIST_TOP, LIST_BOTTOM = 42, 40 -- list area inside the tab
+local LIST_W = 500                   -- orders column
 local MATS_GAP = 10                  -- between the two columns
 local CAPACITY = HEIGHT - LIST_TOP - LIST_BOTTOM - 12
 local ROW_W = LIST_W - 12 -- list width minus its padding
@@ -520,32 +521,10 @@ local function ClickSound()
     if PlaySound then pcall(PlaySound, SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856) end
 end
 
--- Dark button with a colored border, brighter under the mouse
+-- Pill button of the style kit (UI.lua): gold; RED gives the dark one (refuse, cancel)
 local function MakeButton(parent, width, color, onClick)
-    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    b:SetSize(width, 22)
-    Backdrop(b, BUTTON_BG, color, 12)
-    b.color = color
-    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    b.label:SetPoint("CENTER", 0, 0)
-    b:SetScript("OnEnter", function(self)
-        if self.SetBackdropColor then
-            self:SetBackdropColor(self.color[1] * 0.35, self.color[2] * 0.35, self.color[3] * 0.35, 0.95)
-        end
-    end)
-    b:SetScript("OnLeave", function(self)
-        if self.SetBackdropColor then
-            local bg = self.active and ACTIVE_BG or BUTTON_BG
-            self:SetBackdropColor(bg[1], bg[2], bg[3], bg[4])
-        end
-    end)
-    b:SetScript("OnMouseDown", function(self) self.label:SetPoint("CENTER", 1, -1) end)
-    b:SetScript("OnMouseUp", function(self) self.label:SetPoint("CENTER", 0, 0) end)
-    b:SetScript("OnClick", function(self)
-        ClickSound()
-        onClick(self)
-    end)
-    return b
+    return ns.UI.Button(parent, { width = width, height = 22, size = 12,
+        variant = color == RED and "dark" or "gold", onClick = onClick })
 end
 
 -- Item name, quality and icon; an item the client has not seen yet is asked to the server and
@@ -931,13 +910,10 @@ local function RefreshMaterials(groups, pending)
     end
 end
 
+-- the selected one (tab, scope, materials of) is red, the others gold, like the site's tabs
 SetScopeButton = function(b, active)
     b.active = active
-    local border = active and GOLD or GREY
-    if b.SetBackdropBorderColor then b:SetBackdropBorderColor(border[1], border[2], border[3], border[4]) end
-    local bg = active and ACTIVE_BG or BUTTON_BG
-    if b.SetBackdropColor then b:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
-    if active then b.label:SetTextColor(1, 0.92, 0.6) else b.label:SetTextColor(0.6, 0.6, 0.6) end
+    b:SetVariant(active and "red" or "gold")
 end
 
 Refresh = function()
@@ -1022,59 +998,14 @@ Refresh = function()
     if state.page < #pages then win.next:Enable() else win.next:Disable() end
 end
 
-local function CreateWindow()
-    win = CreateFrame("Frame", "WallOfShameForeverOrders", UIParent, "BackdropTemplate")
-    win:SetSize(WIDTH, HEIGHT)
-    win:SetPoint("CENTER")
-    win:SetFrameStrata("DIALOG")
-    win:SetToplevel(true)
-    win:SetClampedToScreen(true)
-    win:SetMovable(true)
-    win:EnableMouse(true)
-    win:RegisterForDrag("LeftButton")
-    win:SetScript("OnDragStart", win.StartMoving)
-    win:SetScript("OnDragStop", win.StopMovingOrSizing)
-    Backdrop(win, BG, GOLD, 16)
-    tinsert(UISpecialFrames, "WallOfShameForeverOrders") -- closes with Escape
+local function CreateWindow(parent)
+    win = CreateFrame("Frame", "WallOfShameForeverOrders", parent)
+    win:SetAllPoints()
 
-    -- title band: icon in a gold frame, title, addon name
-    local band = win:CreateTexture(nil, "BORDER")
-    band:SetPoint("TOPLEFT", 4, -4)
-    band:SetPoint("TOPRIGHT", -4, -4)
-    band:SetHeight(56)
-    band:SetColorTexture(0.13, 0.095, 0.04, 0.85)
-    local bandLine = Line(win, "ARTWORK", GOLD)
-    bandLine:SetPoint("TOPLEFT", band, "BOTTOMLEFT", 0, 0)
-    bandLine:SetPoint("TOPRIGHT", band, "BOTTOMRIGHT", 0, 0)
-
-    local iconFrame = CreateFrame("Frame", nil, win)
-    iconFrame:SetSize(40, 40)
-    iconFrame:SetPoint("TOPLEFT", 14, -12)
-    local icon = iconFrame:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
-    icon:SetTexture(ICON)
-    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    local iconBorder = iconFrame:CreateTexture(nil, "OVERLAY")
-    iconBorder:SetAllPoints()
-    iconBorder:SetTexture("Interface\\Common\\WhiteIconFrame")
-    iconBorder:SetVertexColor(GOLD[1], GOLD[2], GOLD[3])
-
-    win.title = win:CreateFontString(nil, "OVERLAY")
-    if not win.title:SetFont(TITLE_FONT, 20, "OUTLINE") then
-        win.title:SetFontObject("GameFontNormalLarge") -- fallback if the font is missing
-    end
-    win.title:SetTextColor(1, 0.84, 0.4)
-    win.title:SetPoint("TOPLEFT", iconFrame, "TOPRIGHT", 12, -1)
-    win.title:SetWidth(WIDTH - 120)
-    win.title:SetJustifyH("LEFT")
-    win.title:SetWordWrap(false)
-    local sub = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    sub:SetPoint("TOPLEFT", win.title, "BOTTOMLEFT", 0, -4)
-    sub:SetText("Wall of Shame Forever")
-
-    local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", -2, -2)
+    -- « Commandes de Chamy Chan », under the materials column
+    win.title = ns.UI.Caption(win, 14)
+    win.title:SetPoint("BOTTOMRIGHT", -8, 14)
+    win.title:SetJustifyH("RIGHT")
 
     -- this character / all my characters
     local function SetScope(scope)
@@ -1083,7 +1014,7 @@ local function CreateWindow()
         Refresh()
     end
     win.scopeAccount = MakeButton(win, 150, GREY, function() SetScope("account") end)
-    win.scopeAccount:SetPoint("TOPRIGHT", -14, -68)
+    win.scopeAccount:SetPoint("TOPRIGHT", 0, -4)
     win.scopeChar = MakeButton(win, 150, GREY, function() SetScope("char") end)
     win.scopeChar:SetPoint("RIGHT", win.scopeAccount, "LEFT", -6, 0)
 
@@ -1094,25 +1025,25 @@ local function CreateWindow()
         Refresh()
     end
     win.tabCraft = MakeButton(win, 170, GREY, function() SetTab("craft") end)
-    win.tabCraft:SetPoint("TOPLEFT", 14, -68)
+    win.tabCraft:SetPoint("TOPLEFT", 0, -4)
     win.tabPlaced = MakeButton(win, 170, GREY, function() SetTab("placed") end)
     win.tabPlaced:SetPoint("LEFT", win.tabCraft, "RIGHT", 6, 0)
 
     -- list (left column)
-    win.list = CreateFrame("Frame", nil, win, "BackdropTemplate")
-    win.list:SetPoint("TOPLEFT", 12, -LIST_TOP)
-    win.list:SetPoint("BOTTOMLEFT", 12, LIST_BOTTOM)
+    win.list = CreateFrame("Frame", nil, win)
+    win.list:SetPoint("TOPLEFT", 0, -LIST_TOP)
+    win.list:SetPoint("BOTTOMLEFT", 0, LIST_BOTTOM)
     win.list:SetWidth(LIST_W)
-    Backdrop(win.list, LIST_BG, DIM_GOLD, 12)
+    ns.UI.Panel(win.list)
 
     -- materials (right column): the selected buyer's or the total, "have / needed"
-    win.mats = CreateFrame("Frame", nil, win, "BackdropTemplate")
+    win.mats = CreateFrame("Frame", nil, win)
     win.mats:SetPoint("TOPLEFT", win.list, "TOPRIGHT", MATS_GAP, 0)
-    win.mats:SetPoint("BOTTOMRIGHT", -12, LIST_BOTTOM)
-    Backdrop(win.mats, LIST_BG, DIM_GOLD, 12)
-    win.matsTitle = win.mats:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    win.mats:SetPoint("BOTTOMRIGHT", 0, LIST_BOTTOM)
+    ns.UI.Panel(win.mats)
+    win.matsTitle = ns.UI.Caption(win.mats, 15)
     win.matsTitle:SetPoint("TOPLEFT", 12, -10)
-    local matsWidth = WIDTH - 24 - LIST_W - MATS_GAP
+    local matsWidth = WIDTH - LIST_W - MATS_GAP
     local half = math.floor((matsWidth - 30) / 2)
     win.matsBuyer = MakeButton(win.mats, half, GREY, function()
         state.mats = "buyer"
@@ -1156,23 +1087,14 @@ local function CreateWindow()
     win.empty.hint:SetWidth(340)
 
     -- footer: total, pages
-    local footLine = Line(win, "ARTWORK", DIM_GOLD)
-    footLine:SetPoint("BOTTOMLEFT", 12, LIST_BOTTOM - 4)
-    footLine:SetPoint("BOTTOMRIGHT", -12, LIST_BOTTOM - 4)
-    win.total = win:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    win.total:SetPoint("BOTTOMLEFT", 18, 17)
+    win.total = ns.UI.Caption(win, 15)
+    win.total:SetPoint("BOTTOMLEFT", 6, 14)
     local function PageButton(direction)
-        local b = CreateFrame("Button", nil, win)
-        b:SetSize(26, 26)
-        local base = "Interface\\Buttons\\UI-SpellbookIcon-" .. direction .. "Page-"
-        b:SetNormalTexture(base .. "Up")
-        b:SetPushedTexture(base .. "Down")
-        b:SetDisabledTexture(base .. "Disabled")
-        b:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+        local b = ns.UI.Button(win, { width = 34, height = 22, text = direction == "Next" and ">" or "<" })
         return b
     end
     win.next = PageButton("Next")
-    win.next:SetPoint("BOTTOMRIGHT", win, "BOTTOMLEFT", 12 + LIST_W - 2, 10) -- under the orders column
+    win.next:SetPoint("BOTTOMRIGHT", win, "BOTTOMLEFT", LIST_W, 6) -- under the orders column
     win.pageText = win:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     win.pageText:SetPoint("RIGHT", win.next, "LEFT", -6, 0)
     win.prev = PageButton("Prev")
@@ -1193,13 +1115,18 @@ local function CreateWindow()
         if popup then popup:Hide() end
     end)
     win:Hide()
+    return win
 end
 
+ns.Hub.Register({ key = "orders", order = 20,
+    label = function() return L("hub_tab_orders", db and #Orders.List(Scope()) or 0) end,
+    build = CreateWindow, refresh = function() Refresh() end })
+
+-- The « Commandes » tab of the « Bagarre club » window: open (show true), closed (false) or the other way
 function Orders.Toggle(show)
     if not db then return end
-    if not win then CreateWindow() end
-    if show == nil then show = not win:IsShown() end
-    if show then win:Show() else win:Hide() end
+    if show == nil then show = not ns.Hub.IsShown("orders") end
+    if show then ns.Hub.Show("orders") else ns.Hub.Hide() end
 end
 ns.ToggleOrders = Orders.Toggle
 ns.RefreshOrders = function() Refresh() end
@@ -1209,27 +1136,28 @@ ns.RefreshOrders = function() Refresh() end
 -------------------------------------------------------------------------------
 
 local function CreatePopup()
-    popup = CreateFrame("Frame", "WallOfShameForeverOrderRefuse", UIParent, "BackdropTemplate")
-    popup:SetSize(360, 168)
+    popup = CreateFrame("Frame", "WallOfShameForeverOrderRefuse", UIParent)
+    popup:SetSize(400, 196)
     popup:SetFrameStrata("FULLSCREEN_DIALOG")
     popup:SetToplevel(true)
     popup:EnableMouse(true)
-    Backdrop(popup, BG, GOLD, 16)
+    ns.UI.Window(popup)
     tinsert(UISpecialFrames, "WallOfShameForeverOrderRefuse")
 
-    popup.title = popup:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    popup.title:SetPoint("TOP", 0, -16)
+    popup.ribbon = ns.UI.Ribbon(popup, 16)
+    popup.ribbon:SetPoint("TOP", 0, 12)
+    popup.title = { SetText = function(_, text) popup.ribbon:SetText(text) end }
     popup.item = popup:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    popup.item:SetPoint("TOP", popup.title, "BOTTOM", 0, -8)
+    popup.item:SetPoint("TOP", 0, -34)
     popup.item:SetWidth(320)
     popup.item:SetWordWrap(false)
     popup.label = popup:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    popup.label:SetPoint("TOPLEFT", 26, -70)
+    popup.label:SetPoint("TOPLEFT", 40, -64)
     popup.label:SetTextColor(0.75, 0.75, 0.75)
 
     popup.edit = CreateFrame("EditBox", nil, popup, "InputBoxTemplate")
     popup.edit:SetSize(304, 22)
-    popup.edit:SetPoint("TOPLEFT", 30, -86)
+    popup.edit:SetPoint("TOPLEFT", 46, -80)
     popup.edit:SetAutoFocus(false)
     popup.edit:SetMaxLetters(REASON_MAX)
     popup.count = popup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -1250,9 +1178,9 @@ local function CreatePopup()
     end)
 
     popup.confirm = MakeButton(popup, 130, RED, Confirm)
-    popup.confirm:SetPoint("BOTTOMRIGHT", popup, "BOTTOM", -4, 16)
+    popup.confirm:SetPoint("BOTTOMRIGHT", popup, "BOTTOM", -4, 26)
     popup.cancel = MakeButton(popup, 130, GREY, function() popup:Hide() end)
-    popup.cancel:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 16)
+    popup.cancel:SetPoint("BOTTOMLEFT", popup, "BOTTOM", 4, 26)
 
     popup:SetScript("OnHide", function()
         popup.order = nil
