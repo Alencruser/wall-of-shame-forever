@@ -315,6 +315,10 @@ send no `placed`; companions before 0.7.2 ignore it.
   upcoming, reward }], `activities` [{ label, title, at, by, members, level }]. `null` when the bot does
   not know the player. The companion writes it as `hub` in the addon's file, within limits (depth 4,
   12 items per list, 200 characters per text)
+- `hub.latest` (bot 2026-11-27, addon 0.9.3): { addon, companion } the latest versions published
+  (CurseForge, GitHub), `null` when unknown. The companion 0.8.4 also writes its own version at the root of
+  the addon's file (`companion`); the addon tells the player in chat when either is out of date (no
+  `companion` there: a companion older than 0.8.4)
 - `receivedAt` (bot 2026-11-24): for a done order, `0` while the hand-over is not confirmed (the
   addon shows a Received button), else when it was (unix seconds). A done order stays listed until
   received, then 7 days; the bot marks it received by itself 14 days after it was done

@@ -21,6 +21,7 @@ import urllib.parse
 
 import requests
 
+import appinfo
 import events
 import wowpath
 
@@ -266,6 +267,8 @@ def lua_file(orders, updated, placed=(), hub=None):
             "-- Rewritten when the orders change; edits here are lost.\n"
             f"{GLOBAL} = {{\n"
             f'\t["updated"] = {int(updated)},\n'
+            # the companion's version (0.8.4): the addon compares it with the latest one the bot gives (hub.latest)
+            f'\t["companion"] = {lua_string(appinfo.VERSION)},\n'
             f'\t["orders"] = {lua_value(orders, chr(9))},\n'
             f'\t["placed"] = {lua_value(list(placed), chr(9))},\n'
             + (f'\t["hub"] = {lua_value(hub, chr(9))},\n' if hub else "")

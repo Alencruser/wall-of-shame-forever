@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.9.3 (2026-11-27)
+
+- Updates told in game: when a guildmate has a newer version of the addon, or when the bot says a newer addon
+  or companion is out, one line in chat says so (once per version and session), with how to update. The
+  companion 0.8.4 tells the addon its own version.
+
 ## v0.9.2 (2026-11-27)
 
 - Armurerie: the lines between talents (« this talent leads to that one ») are sent too, so the site draws

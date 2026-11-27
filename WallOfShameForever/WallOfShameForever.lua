@@ -459,6 +459,11 @@ local function Send(msg)
     end
 end
 
+-- This addon's version for the guildmates' messages (Updates.lua: newer versions told in chat)
+local function MyVersion()
+    return ns.Updates and ns.Updates.Mine() or ""
+end
+
 local function MyStatus()
     local _, classFile = UnitClass("player")
     return UnitLevel("player"), GetRealZoneText() or "", classFile or ""
@@ -1494,15 +1499,18 @@ local function OnAddonMessage(text, sender)
     m.hasAddon, m.online, m.lastSeen, m.inGuild = true, true, time(), true
 
     if kind == "H" then
-        -- Someone logged in and asks for the current state: reply after a short delay
+        -- Someone logged in and asks for the current state: reply after a short delay. a: their addon's
+        -- version (v0.9.3), a newer one is out if it is newer than ours (Updates.lua)
+        if not isSelf and ns.Updates then ns.Updates.Seen(a) end
         if not isSelf then
             C_Timer.After(math.random() * 5, function()
                 local level, zone, classFile = MyStatus()
-                Send(table.concat({ "S", level, zone, classFile, Member(playerName).deaths or 0 }, "|"))
+                Send(table.concat({ "S", level, zone, classFile, Member(playerName).deaths or 0, MyVersion() }, "|"))
                 if ns.SendPosition then ns.SendPosition(true) end -- their map gets our pin right away
             end)
         end
     elseif kind == "S" then
+        if not isSelf and ns.Updates then ns.Updates.Seen(e) end -- e: their addon's version (v0.9.3)
         m.level = tonumber(a) or m.level
         m.zone, m.class = b, (c ~= "" and c) or m.class
         m.deaths = tonumber(d) or m.deaths
@@ -1665,9 +1673,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
             CheckGuildLeft()
             UpdateChannel() -- channels cannot be joined right at login
             QueueLevel(UnitLevel("player")) -- current level, also for characters made before the addon
-            Send("H")
+            Send("H|" .. MyVersion())
             local statusLevel, statusZone, statusClass = MyStatus()
-            Send(table.concat({ "S", statusLevel, statusZone, statusClass, Member(playerName).deaths or 0 }, "|"))
+            Send(table.concat({ "S", statusLevel, statusZone, statusClass, Member(playerName).deaths or 0, MyVersion() }, "|"))
             ScheduleProfessionLevels() -- levels gained elsewhere (another PC) or before this version
         end)
         Print(L("loaded"))
@@ -2181,7 +2189,7 @@ SlashCmdList.WALLOFSHAMEFOREVER = function(raw)
         TestBanners()
     elseif msg == "sync" then
         RequestRoster()
-        Send("H")
+        Send("H|" .. MyVersion())
         Print(L("sync_requested"))
     elseif msg == "discord" then
         Toggle("discord", "opt_discord")
