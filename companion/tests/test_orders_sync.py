@@ -70,6 +70,17 @@ class PayloadTest(unittest.TestCase):
                                   "realtime")
         self.assertEqual((ev["order"], ev["status"], ev["reason"]), ("42", "received", ""))
 
+    def test_activity_and_cancel(self):
+        base = "2|A|Chamy Chan-R:A:1312345678901234567:join:1763030000|Chamy Chan|R|Bagarre|42|SHAMAN|1763030000|Alen#1|"
+        ev = events.parse_payload(base + "join|1312345678901234567|heal", "realtime")
+        self.assertEqual((ev["type"], ev["action"], ev["activity"], ev["role"]), ("activity", "join", "1312345678901234567", "heal"))
+        self.assertIsNotNone(events.parse_payload(base + "leave|1312345678901234567|", "realtime"))
+        self.assertIsNone(events.parse_payload(base + "join|1312345678901234567|bard", "realtime"))
+        self.assertIsNone(events.parse_payload(base + "join|abc|dps", "realtime"))
+        ev = events.parse_payload(PAYLOAD.replace(":42:refused|", ":42:cancelled|").replace("|42|refused|Pas les compos", "|42|cancelled|"),
+                                  "realtime")
+        self.assertEqual(ev["status"], "cancelled")
+
     def test_request(self):
         base = "2|R|Chamy Chan-R:R:1763030000:new|Chamy Chan|R|Bagarre|21|SHAMAN|1763030000|Alen#1234|"
         ev = events.parse_payload(base + "new|6a1b2c3d123|1468|5|2 po|Pour la quête des murlocs", "realtime")

@@ -455,6 +455,36 @@ function Orders.Mark(order, status, reason)
 end
 
 -- The buyer has the item: received, sent to the companion; the button goes until the next file
+-- A pending order of mine I no longer want (« My orders » tab, addon 0.8.0): cancelled on the bot through
+-- the companion; shown cancelled here at once (db.ordersCancelled, until the next file)
+function Orders.CanCancel(o, cancelled)
+    return o.status == "pending" and not (cancelled and cancelled[o.id])
+end
+
+function Orders.CancelPlaced(order)
+    if not db or not Orders.CanCancel(order, db.ordersCancelled) then return nil end
+    db.ordersCancelled[order.id] = time()
+    local payload = Orders.Payload(order.id, "cancelled", "")
+    ns.AddToOutbox(payload)
+    QueueStrip(payload)
+    ns.Print(L("orders_marked_cancelled", (order.displayName or order.itemName or "?") .. " \195\151" .. order.qty))
+    Refresh()
+    return payload
+end
+
+-- « Annuler » asks first (a click too fast costs nothing)
+local function AskCancel(order)
+    if type(StaticPopupDialogs) ~= "table" or type(StaticPopup_Show) ~= "function" then
+        return Orders.CancelPlaced(order)
+    end
+    StaticPopupDialogs.WOS_CANCEL_ORDER = StaticPopupDialogs.WOS_CANCEL_ORDER or {
+        button1 = YES or "Oui", button2 = NO or "Non", timeout = 0, whileDead = true, hideOnEscape = true,
+        OnAccept = function(_, data) Orders.CancelPlaced(data) end,
+    }
+    StaticPopupDialogs.WOS_CANCEL_ORDER.text = L("orders_cancel_confirm")
+    StaticPopup_Show("WOS_CANCEL_ORDER", (order.displayName or order.itemName or "?") .. " \195\151" .. order.qty, nil, order)
+end
+
 function Orders.MarkReceived(order)
     if not db or not Orders.CanReceive(order, db.ordersReceived) then return nil end
     db.ordersReceived[order.id] = time()
@@ -701,7 +731,10 @@ local function NewItemRow()
     r.note:SetWordWrap(false)
     r.note:SetTextColor(0.62, 0.62, 0.62)
 
-    r.refuse = MakeButton(r, BTN_REFUSE_W, RED, function(self) ShowRefuse(self:GetParent().order) end)
+    r.refuse = MakeButton(r, BTN_REFUSE_W, RED, function(self)
+        local o = self:GetParent().order
+        if o.status then AskCancel(o) else ShowRefuse(o) end -- « My orders »: cancel my pending order
+    end)
     r.refuse:SetPoint("RIGHT", -8, 0)
     r.done = MakeButton(r, BTN_DONE_W, GREEN, function(self)
         local o = self:GetParent().order
@@ -747,7 +780,12 @@ local function FillHeader(r, entry)
     r.age:SetText(age)
 end
 
-local STATUS_COLOR = { pending = "|cffffd200", done = "|cff4fd04f", refused = "|cffff6060", received = "|cff9fd4ff" }
+local STATUS_COLOR = { pending = "|cffffd200", done = "|cff4fd04f", refused = "|cffff6060", received = "|cff9fd4ff",
+    cancelled = "|cff8f8f8f" }
+
+local function CancelledHere(o)
+    return o.status == "pending" and db and db.ordersCancelled[o.id]
+end
 
 local function Received(o)
     return o.status == "done" and ((o.receivedAt or 0) > 0 or (db and db.ordersReceived[o.id]))
@@ -755,7 +793,7 @@ end
 
 -- One of my orders: status on the right, and under the name what to do about it
 local function FillPlacedText(r, o)
-    local status = Received(o) and "received" or o.status
+    local status = Received(o) and "received" or CancelledHere(o) and "cancelled" or o.status
     r.statusText = STATUS_COLOR[status] .. L("orders_status_" .. status) .. "|r"
     r.status:SetText(r.statusText)
     local line
@@ -788,9 +826,10 @@ local function FillItem(r, entry, index)
     local note
     if o.status then -- "My orders" tab: status, or "Received" on a done order to confirm
         local canReceive = Orders.CanReceive(o, db and db.ordersReceived)
+        local canCancel = Orders.CanCancel(o, db and db.ordersCancelled)
         r.done:SetShown(canReceive)
-        r.refuse:Hide()
-        r.status:SetShown(not canReceive)
+        r.refuse:SetShown(canCancel)
+        r.status:SetShown(not canReceive and not canCancel)
         note = FillPlacedText(r, o)
     else
         r.done:Show()
@@ -811,7 +850,7 @@ local function FillItem(r, entry, index)
         r.name:SetPoint("LEFT", r.iconFrame, "RIGHT", 10, 0)
     end
     r.done.label:SetText(ICON_READY .. L(o.status and "orders_received_button" or "orders_done"))
-    r.refuse.label:SetText(ICON_REFUSE .. L("orders_refuse"))
+    r.refuse.label:SetText(o.status and L("orders_cancel_button") or (ICON_REFUSE .. L("orders_refuse")))
 end
 
 local SetScopeButton -- below
@@ -935,7 +974,7 @@ Refresh = function()
     local placed = placedSource or {}
     local placedPending = {}
     for _, o in ipairs(placed) do
-        if o.status == "pending" then placedPending[#placedPending + 1] = o end
+        if o.status == "pending" and not CancelledHere(o) then placedPending[#placedPending + 1] = o end
     end
     win.tabCraft.label:SetText(L("orders_tab_craft", #toCraft))
     win.tabPlaced.label:SetText(L("orders_tab_placed", #placedPending))
@@ -1422,6 +1461,7 @@ events:SetScript("OnEvent", function(_, event, itemId)
         if db.minimapButton == nil then db.minimapButton = true end
         if type(db.ordersHandled) ~= "table" then db.ordersHandled = {} end
         if type(db.ordersReceived) ~= "table" then db.ordersReceived = {} end
+        if type(db.ordersCancelled) ~= "table" then db.ordersCancelled = {} end
         me = Orders.Me()
         local _, _, _, battleTag = ns.Identity()
         Orders.UpdateIdentity(db, me, battleTag)
@@ -1429,7 +1469,17 @@ events:SetScript("OnEvent", function(_, event, itemId)
         source = Orders.ReadSource(_G.WallOfShameForever_Orders)
         if source then Orders.Prune(db.ordersHandled, source) end
         placedSource = Orders.ReadPlaced(_G.WallOfShameForever_Orders)
-        if placedSource then Orders.Prune(db.ordersReceived, placedSource) end
+        if placedSource then
+            Orders.Prune(db.ordersReceived, placedSource)
+            -- a cancel the bot has (no longer pending in the file), or an order gone: forgotten
+            for id in pairs(db.ordersCancelled) do
+                local still
+                for _, o in ipairs(placedSource) do
+                    if o.id == id and o.status == "pending" then still = true end
+                end
+                if not still then db.ordersCancelled[id] = nil end
+            end
+        end
         ApplyMinimapButton()
         C_Timer.After(8, Orders.Notify) -- after the loading screen and the login chat lines
     elseif event == "BAG_UPDATE_DELAYED" then

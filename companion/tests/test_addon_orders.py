@@ -467,6 +467,59 @@ class HubTest(unittest.TestCase):
         self.assertTrue(opts.IsShown(opts))
 
 
+
+class CancelAndSignUpTest(unittest.TestCase):
+    """v0.8.0: cancel a pending order of mine (« Mes commandes »), sign up to an activity from its window."""
+
+    def test_cancel_my_pending_order(self):
+        a = Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": [
+            placed("p1", status="pending", created=1), placed("d1", status="done", created=2, receivedAt=0)]}).login()
+        orders = a.orders
+        by_id = {o.id: o for o in orders.Placed().values()}
+        self.assertTrue(orders.CanCancel(by_id["p1"], a.db.ordersCancelled))
+        self.assertFalse(orders.CanCancel(by_id["d1"], a.db.ordersCancelled))  # done: too late
+        win = PlacedTest.open_placed(None, a)
+        rows = [r for r in a.lua_list(a.g.STATE.frames)
+                if a.lua.eval("function(f) return rawget(f, 'order') end")(r) and r.order.id == "p1"]
+        self.assertTrue(rows[0].refuse.IsShown(rows[0].refuse))
+        self.assertEqual(rows[0].refuse.label._text, "Annuler")
+        rows[0].refuse.GetScript(rows[0].refuse, "OnClick")(rows[0].refuse)  # no popup in the tests: at once
+        ev = events.parse_payload(a.strips[-1], "realtime")
+        self.assertEqual((ev["type"], ev["order"], ev["status"]), ("order", "p1", "cancelled"))
+        self.assertIsNotNone(a.db.ordersCancelled["p1"])
+        self.assertIsNone(orders.CancelPlaced(by_id["p1"]))  # only once
+        self.assertEqual(win.tabPlaced.label._text, "Mes commandes (0)")
+
+    def test_sign_up_from_the_activity_window(self):
+        activity = {"id": "1312345678901234567", "type": "donjon", "label": "Donjon", "title": "Mortemines",
+                    "at": 1763200000, "by": "Lex", "members": 1, "size": 5, "level": "18-23", "levelMin": 15,
+                    "group": ["Lwi Zi;heal;31"], "free": {"tank": 1, "heal": 0, "dps": 3}, "joined": False, "myRole": ""}
+        a = Addon(raw_orders={"updated": 1763030000, "orders": [], "placed": [],
+                              "hub": {"activities": [activity]}}).login()
+        hub = a.ns.Hub
+        hub.Show("events")
+        row = hub.Panel("events").rows[1]
+        row.GetScript(row, "OnClick")(row)
+        w = hub.ActivityWindow()
+        self.assertTrue(w.IsShown(w))
+        self.assertIn("Lwi Zi", w.group._text)
+        self.assertEqual(w.groupCap._text, "Groupe (1/5)")
+        # a shaman: heal is full, so dps is the only role left, chosen at once
+        self.assertFalse(w.roles.heal.IsEnabled(w.roles.heal))
+        self.assertIn("M'inscrire avec Chamy Chan (niv. 21)", w.action.label._text)
+        w.action.GetScript(w.action, "OnClick")(w.action)
+        ev = events.parse_payload(a.strips[-1], "realtime")
+        self.assertEqual((ev["type"], ev["action"], ev["activity"], ev["role"]),
+                         ("activity", "join", "1312345678901234567", "dps"))
+        self.assertIn("Inscription envoyée (DPS)", w.status._text)
+        self.assertEqual(w.action.label._text, "Me retirer")
+        # the bot's list says joined: the local action is forgotten
+        a.g.WallOfShameForever_Orders.hub.activities[1].joined = True
+        a.g.WallOfShameForever_Orders.hub.activities[1].myRole = "dps"
+        joined, role, pending = hub.ActivityState(a.g.WallOfShameForever_Orders.hub.activities[1])
+        self.assertEqual((joined, role, pending), (True, "dps", False))
+
+
 if __name__ == "__main__":
     unittest.main()
 

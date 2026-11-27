@@ -18,6 +18,7 @@ local db
 local hub -- the window
 local tabs, order = {}, {}
 local current
+local activityWin, chosenRole -- an activity's window (Activités), below
 
 -- The bot's data for the tabs (nil without a companion, or a companion older than 0.7.9)
 function Hub.Data()
@@ -51,7 +52,7 @@ end
 
 local function RefreshHeader()
     hub.ribbon:SetText(GetGuildInfo and GetGuildInfo("player") or "Wall of Shame Forever")
-    local name = UnitName and UnitName("player") or "?"
+    local name = ns.Identity() or "?"
     local level = UnitLevel and UnitLevel("player") or 0
     hub.sub:SetText(L("hub_sub", name, level))
     hub.optionsButton:SetLabel(L("hub_options"))
@@ -111,6 +112,7 @@ local function Create()
         local t = tabs[current]
         if t and t.panel then t.panel:Hide() end -- the panel goes with the window (its own state too)
         if ns.OnHubHidden then ns.OnHubHidden() end
+        if activityWin then activityWin:Hide() end
     end)
     hub:Hide()
 end
@@ -306,10 +308,253 @@ local function RefreshTitles(panel)
 end
 
 -------------------------------------------------------------------------------
--- Activités: the next outings (made on Discord)
+-- Activités: the next outings (made on Discord). A click opens the activity: date, organizer, levels,
+-- the group, and signing up with the character played (dungeon: with a role), or leaving. The sign-up
+-- goes to the bot through the companion (2|A|...); until the bot's list says so, shown here at once
+-- (db.activitiesLocal).
+--   2|A|id|name|realm|guild|level|class|time|battletag|action|activity|role
+--   action: join or leave; activity: the id of its Discord card; role: tank, heal, dps (dungeon) or empty
 -------------------------------------------------------------------------------
 
 local EVENT_H = 64
+local GROUP_SIZE = 5
+local ROLES = { "tank", "heal", "dps" }
+local ROLE_SLOTS = { tank = 1, heal = 1, dps = 3 }
+-- roles each class can take (the bot's rule, activity.js)
+local CLASS_ROLES = {
+    WARRIOR = { tank = true, dps = true }, PALADIN = { tank = true, heal = true, dps = true },
+    DRUID = { tank = true, heal = true, dps = true }, PRIEST = { heal = true, dps = true },
+    SHAMAN = { heal = true, dps = true }, HUNTER = { dps = true }, ROGUE = { dps = true }, MAGE = { dps = true },
+    WARLOCK = { dps = true },
+}
+
+local function ActivityActions()
+    if not db then return {} end
+    if type(db.activitiesLocal) ~= "table" then db.activitiesLocal = {} end
+    return db.activitiesLocal
+end
+
+-- The activity as this player sees it: signed up or not, with what was just done here
+function Hub.ActivityState(e)
+    local a = ActivityActions()[e.id]
+    local joined, role, pending = e.joined == true, e.myRole or "", false
+    if a then
+        local done = (a.action == "join") == joined
+        if done or time() - (a.at or 0) > 86400 then
+            ActivityActions()[e.id] = nil
+        else
+            joined, role, pending = a.action == "join", a.role or "", true
+        end
+    end
+    return joined, role, pending
+end
+
+function Hub.ActivityPayload(action, id, role)
+    local name, realm, guild, battleTag = ns.Identity()
+    local _, classFile = UnitClass("player")
+    local now = time()
+    return table.concat({ "2", "A", name .. "-" .. realm .. ":A:" .. id .. ":" .. action .. ":" .. now, name, realm, guild,
+        UnitLevel("player"), classFile or "", now, battleTag, action, id, role or "" }, "|")
+end
+
+-- Sign up (role for a dungeon) or leave. Returns the payload sent
+function Hub.SignUp(e, action, role)
+    if not (db and e and e.id) then return nil end
+    ActivityActions()[e.id] = { action = action, role = role or "", at = time() }
+    local payload = Hub.ActivityPayload(action, e.id, role)
+    ns.AddToOutbox(payload)
+    if ns.QueueStrip then ns.QueueStrip(payload) end
+    return payload
+end
+
+local function RoleLabel(role)
+    return role ~= "" and L("role_" .. role) or ""
+end
+
+local function DayText(at)
+    local days = { strsplit(",", L("hub_days")) }
+    local t = date("*t", at)
+    return (days[t.wday] or "") .. " " .. date("%d/%m", at) .. " · " .. date("%H:%M", at)
+end
+
+local function Until(at)
+    local diff = (at or 0) - time()
+    if diff <= 3600 then return L("hub_event_soon") end
+    if diff < 86400 then return L("hub_event_in_hours", math.floor(diff / 3600)) end
+    return L("hub_event_in_days", math.floor(diff / 86400))
+end
+
+local function RefreshActivity()
+    local w = activityWin
+    local e = w and w.event
+    if not (e and w:IsShown()) then return end
+    local title = tostring(e.title or "")
+    w.ribbon:SetText(title ~= "" and title or tostring(e.label or "?"))
+    w.when:SetText(DayText(e.at) .. "  ·  " .. Until(e.at))
+    w.chip:SetText(tostring(e.label or ""))
+    local lines = { L("act_by", tostring(e.by or "?")) }
+    if (e.level or "") ~= "" then lines[#lines + 1] = L("act_levels", e.level) end
+    if (tonumber(e.levelMin) or 0) > 0 then lines[#lines + 1] = L("act_level_min", e.levelMin) end
+    w.info:SetText(table.concat(lines, "\n"))
+
+    -- the group: by role for a dungeon (slots), else numbered
+    local group = {}
+    for _, g in ipairs(type(e.group) == "table" and e.group or {}) do
+        local name, role, level = strsplit(";", tostring(g))
+        group[#group + 1] = { name = name or "?", role = role or "", level = level or "" }
+    end
+    w.groupCap:SetText(L("act_group", #group, tonumber(e.size) or GROUP_SIZE))
+    local out = {}
+    local function Line(m)
+        return m and ("|cfff6deb0" .. m.name .. "|r" .. (m.level ~= "" and ("  |cff9b968b" .. L("hub_event_level", m.level) .. "|r") or ""))
+            or "|cff6f6a60—|r"
+    end
+    if e.type == "donjon" then
+        for _, role in ipairs(ROLES) do
+            local taken = {}
+            for _, m in ipairs(group) do if m.role == role then taken[#taken + 1] = m end end
+            for slot = 1, ROLE_SLOTS[role] do
+                out[#out + 1] = "|cffffd36b" .. RoleLabel(role) .. "|r  " .. Line(taken[slot])
+            end
+        end
+    else
+        for slot = 1, GROUP_SIZE do out[#out + 1] = slot .. ".  " .. Line(group[slot]) end
+    end
+    w.group:SetText(table.concat(out, "\n"))
+
+    -- this character: sign up (with a role for a dungeon) or leave
+    local joined, myRole, pending = Hub.ActivityState(e)
+    local name = ns.Identity() or "?"
+    local level = UnitLevel and UnitLevel("player") or 0
+    local _, classFile = UnitClass("player")
+    local allowed = CLASS_ROLES[classFile or ""] or { tank = true, heal = true, dps = true }
+    local free = type(e.free) == "table" and e.free or {}
+    local full = (tonumber(e.members) or 0) >= (tonumber(e.size) or GROUP_SIZE)
+    local tooLow = (tonumber(e.levelMin) or 0) > level
+    local dungeon = e.type == "donjon"
+    for _, role in ipairs(ROLES) do
+        local b = w.roles[role]
+        b:SetShown(dungeon and not joined)
+        b:SetLabel(RoleLabel(role))
+        local ok = allowed[role] and (tonumber(free[role]) or 0) > 0
+        if ok then b:Enable() else b:Disable() end
+        if chosenRole == role and not ok then chosenRole = nil end
+        b:SetVariant(chosenRole == role and "red" or "gold")
+    end
+    if dungeon and not chosenRole then
+        local only
+        for _, role in ipairs(ROLES) do
+            if allowed[role] and (tonumber(free[role]) or 0) > 0 then only = only and "many" or role end
+        end
+        if only and only ~= "many" then chosenRole = only end -- one possible role: chosen at once
+        for _, role in ipairs(ROLES) do w.roles[role]:SetVariant(chosenRole == role and "red" or "gold") end
+    end
+
+    local status
+    if joined then
+        status = L(pending and "act_joined_pending" or "act_joined", myRole ~= "" and (" (" .. RoleLabel(myRole) .. ")") or "")
+        w.action:SetLabel(L("act_leave"))
+        w.action:SetVariant("dark")
+        w.action:Enable()
+    else
+        w.action:SetLabel(L("act_join", name, level))
+        w.action:SetVariant("gold")
+        if full then
+            status = L("act_full")
+        elseif tooLow then
+            status = L("act_too_low", e.levelMin)
+        elseif dungeon and not chosenRole then
+            status = L("act_pick_role")
+        else
+            status = pending and L("act_left_pending") or ""
+        end
+        if full or tooLow or (dungeon and not chosenRole) then w.action:Disable() else w.action:Enable() end
+    end
+    w.status:SetText(status)
+end
+
+local function CreateActivityWindow()
+    local w = CreateFrame("Frame", "WallOfShameForeverActivity", UIParent)
+    w:SetSize(480, 470)
+    w:SetFrameStrata("FULLSCREEN_DIALOG")
+    w:SetToplevel(true)
+    UI.Window(w)
+    UI.Movable(w, db, "activityPosition")
+    UI.Appear(w, db)
+    tinsert(UISpecialFrames, "WallOfShameForeverActivity")
+    w.ribbon = UI.Ribbon(w, 18)
+    w.ribbon:SetPoint("TOP", 0, 14)
+    w.close = UI.Close(w, function() w:Hide() end)
+    w.close:SetPoint("TOPRIGHT", -24, -24)
+    w.chip = UI.Chip(w, "dark")
+    w.chip:SetPoint("TOPLEFT", 34, -46)
+    w.when = UI.Caption(w, 15)
+    w.when:SetPoint("LEFT", w.chip, "RIGHT", 10, 0)
+    w.info = UI.Text(w, "GameFontHighlight")
+    w.info:SetPoint("TOPLEFT", 34, -76)
+    w.info:SetPoint("RIGHT", -34, 0)
+    w.info:SetSpacing(4)
+    local box = CreateFrame("Frame", nil, w)
+    box:SetPoint("TOPLEFT", 28, -140)
+    box:SetPoint("TOPRIGHT", -28, -140)
+    box:SetHeight(170)
+    UI.Panel(box)
+    w.groupCap = UI.Caption(box, 15)
+    w.groupCap:SetPoint("TOPLEFT", 14, -12)
+    w.group = UI.Text(box, "GameFontHighlight")
+    w.group:SetPoint("TOPLEFT", 14, -36)
+    w.group:SetPoint("RIGHT", -14, 0)
+    w.group:SetSpacing(5)
+    w.roles = {}
+    local prev
+    for _, role in ipairs(ROLES) do
+        local b = UI.Button(w, { width = 90, onClick = function()
+            chosenRole = role
+            RefreshActivity()
+        end })
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 8, 0) else b:SetPoint("TOPLEFT", 34, -326) end
+        w.roles[role] = b
+        prev = b
+    end
+    w.status = UI.Text(w, "GameFontHighlight", UI.MUTED)
+    w.status:SetPoint("TOPLEFT", 34, -366)
+    w.status:SetPoint("RIGHT", -34, 0)
+    w.action = UI.Button(w, { width = 300, onClick = function()
+        local e = w.event
+        if not e then return end
+        local joined = Hub.ActivityState(e)
+        if joined then
+            Hub.SignUp(e, "leave")
+            ns.Print(L("act_left_sent", tostring(e.title ~= "" and e.title or e.label)))
+        else
+            Hub.SignUp(e, "join", e.type == "donjon" and chosenRole or "")
+            ns.Print(L("act_join_sent", tostring(e.title ~= "" and e.title or e.label)))
+        end
+        RefreshActivity()
+        Hub.Refresh()
+    end })
+    w.action:SetPoint("BOTTOM", 0, 52)
+    w.hint = UI.Text(w, "GameFontHighlightSmall", UI.MUTED)
+    w.hint:SetPoint("BOTTOM", 0, 26)
+    w:SetScript("OnShow", RefreshActivity)
+    w:Hide()
+    activityWin = w
+end
+
+-- Opens an activity's window (tests: Hub.ActivityWindow())
+function Hub.ShowActivity(e)
+    if not db then return end
+    if not activityWin then CreateActivityWindow() end
+    if activityWin.event ~= e then chosenRole = nil end
+    activityWin.event = e
+    activityWin.hint:SetText(L("act_hint"))
+    activityWin:Show()
+    RefreshActivity()
+end
+
+function Hub.ActivityWindow()
+    return activityWin
+end
 
 local function BuildEvents(parent)
     local panel = CreateFrame("Frame", nil, parent)
@@ -321,10 +566,20 @@ local function BuildEvents(parent)
     panel.cap:SetPoint("TOPLEFT", 16, -14)
     panel.rows = {}
     for i = 1, 6 do
-        local r = CreateFrame("Frame", nil, panel.body)
+        local r = CreateFrame("Button", nil, panel.body)
         r:SetHeight(EVENT_H - 8)
         r:SetPoint("TOPLEFT", 16, -42 - (i - 1) * EVENT_H)
         r:SetPoint("RIGHT", -16, 0)
+        local hl = r:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetTexture("Interface\\Buttons\\WHITE8X8")
+        hl:SetVertexColor(UI.GOLD[1], UI.GOLD[2], UI.GOLD[3], 0.08)
+        r:SetScript("OnClick", function(self)
+            if self.event then
+                UI.ClickSound()
+                Hub.ShowActivity(self.event)
+            end
+        end)
         r.when = UI.Button(r, { width = 92, height = 44, size = 13 })
         r.when:SetPoint("LEFT", 0, 0)
         r.when:EnableMouse(false)
@@ -333,11 +588,15 @@ local function BuildEvents(parent)
         r.title:SetPoint("TOPLEFT", r.when, "TOPRIGHT", 14, -4)
         r.chip = UI.Chip(r, "dark")
         r.chip:SetPoint("LEFT", r.title, "RIGHT", 8, 0)
+        r.joined = UI.Chip(r, "red")
+        r.joined:SetPoint("LEFT", r.chip, "RIGHT", 6, 0)
         r.by = UI.Text(r, "GameFontHighlight", UI.MUTED)
         r.by:SetPoint("TOPLEFT", r.title, "BOTTOMLEFT", 0, -6)
         r.left = UI.Text(r, "GameFontHighlightSmall", UI.MUTED)
-        r.left:SetPoint("RIGHT", 0, 0)
+        r.left:SetPoint("RIGHT", 0, 8)
         r.left:SetJustifyH("RIGHT")
+        r.more = UI.Caption(r, 13)
+        r.more:SetPoint("RIGHT", 0, -10)
         r.line = UI.Line(r)
         r.line:SetPoint("BOTTOMLEFT", 0, -4)
         r.line:SetPoint("BOTTOMRIGHT", 0, -4)
@@ -348,13 +607,6 @@ local function BuildEvents(parent)
     panel.hint = UI.Text(panel.body, "GameFontHighlightSmall", UI.MUTED)
     panel.hint:SetPoint("BOTTOMLEFT", 16, 14)
     return panel
-end
-
-local function Until(at)
-    local diff = (at or 0) - time()
-    if diff <= 3600 then return L("hub_event_soon") end
-    if diff < 86400 then return L("hub_event_in_hours", math.floor(diff / 3600)) end
-    return L("hub_event_in_days", math.floor(diff / 86400))
 end
 
 local function RefreshEvents(panel)
@@ -368,21 +620,28 @@ local function RefreshEvents(panel)
     for i, r in ipairs(panel.rows) do
         local e = list[i]
         if type(e) == "table" and tonumber(e.at) then
+            r.event = e
             local t = date("*t", e.at)
             r.when:SetLabel((days[t.wday] or "") .. "\n" .. date("%H:%M", e.at))
             local title = tostring(e.title or "")
             r.title:SetText(title ~= "" and title or tostring(e.label or "?"))
             r.chip:SetText(tostring(e.label or ""))
             r.chip:SetShown(title ~= "" and (e.label or "") ~= "")
+            local joined = e.id and Hub.ActivityState(e)
+            r.joined:SetText(L("act_joined_chip"))
+            r.joined:SetShown(joined and true or false)
             local level = (e.level or "") ~= "" and (" · " .. L("hub_event_level", e.level)) or ""
             r.by:SetText(L("hub_event_by", tostring(e.by or "?"), tonumber(e.members) or 0) .. level)
             r.left:SetText(Until(e.at))
+            r.more:SetText(e.id and L("act_more") or "")
             r:Show()
         else
+            r.event = nil
             r:Hide()
         end
     end
     panel.none:SetText(#list == 0 and L("hub_events_none") or "")
+    RefreshActivity()
 end
 
 -------------------------------------------------------------------------------

@@ -31,9 +31,14 @@ FIELDS = {
     # (someone takes care of it, or no longer) or close (by who asked); request: its id
     "R": ("request", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "action", "request",
                       "item", "qty", "reward", "note"]),
+    # sign-up to a guild activity from the game (addon 0.8.0): action join (role: tank, heal or dps for a
+    # dungeon, else empty) or leave; activity: the id of its Discord card
+    "A": ("activity", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "action", "activity",
+                       "role"]),
 }
 NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds", "item", "qty")
 REQUEST_ACTIONS = ("new", "take", "drop", "close")
+ORDER_STATUSES = ("done", "refused", "received", "cancelled")  # cancelled: by the buyer (addon 0.8.0)
 
 LUA_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
 STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -97,11 +102,14 @@ def parse_payload(payload, source):
         ev["up"] = ev["up"] == "1"  # real level-up (posted), not the login snapshot
     elif kind == "professions":
         ev["professions"] = parse_professions(ev["professions"])
-    elif kind == "order" and ev["status"] not in ("done", "refused", "received"):
+    elif kind == "order" and ev["status"] not in ORDER_STATUSES:
         return None
     elif kind == "follow":
         ev["done"] = ev["done"] == "1"
         if not ev["target"] or ev["start"] is None or ev["seconds"] is None:
+            return None
+    elif kind == "activity":
+        if ev["action"] not in ("join", "leave") or not re.fullmatch(r"\d{5,25}", ev["activity"])                 or ev["role"] not in ("", "tank", "heal", "dps"):
             return None
     elif kind == "request":
         if ev["action"] not in REQUEST_ACTIONS or not re.fullmatch(r"[0-9a-zA-Z]{4,24}", ev["request"]):

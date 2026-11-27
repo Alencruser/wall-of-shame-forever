@@ -6,6 +6,10 @@
   on the slot or Shift+click it: bags, quest log, a link), with a quantity, an optional reward and a note.
   The guild sees the open requests in the tab and in the item's tooltip (« Asked by … »), and a chat line
   when looting one; « I'm on it » tells the asker, who closes the request. Needs companion 0.8.0
+- Activities: a click on an activity opens its window (date, organizer, levels, the group by role) where
+  you sign up with the character you play (choose your role for a dungeon) or leave; the Discord card
+  follows. Needs companion 0.8.0
+- My orders: cancel an order still pending (« Cancel », with a confirmation)
 
 ## v0.7.2 (2026-11-27)
 

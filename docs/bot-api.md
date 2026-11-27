@@ -261,6 +261,13 @@ send no `placed`; companions before 0.7.2 ignore it.
   `request` events: `2|R|id|name|realm|guild|level|class|time|battletag|action|request|item|qty|reward|note`,
   action `new` (item, qty 1 to 999, reward and note optional), `take`, `drop` (someone else) or `close` (the
   asker only); the bot ignores (200) an unknown request, a close by someone else, a take by the asker
+- `hub.activities` (addon 0.8.0): each activity also has `id` (its Discord card), `type`, `size`, `levelMin`,
+  `group` (« name;role;level » per member), `free` ({ tank, heal, dps } places left, dungeon only), `joined`
+  and `myRole` (this player). Sign-ups come as `activity` events:
+  `2|A|id|name|realm|guild|level|class|time|battletag|action|activity|role`, action `join` (role tank, heal
+  or dps for a dungeon, empty otherwise) or `leave`; same rules as the card's button (full, role free and
+  allowed for the class, required level), else ignored (200). An `order` event with status `cancelled`
+  (addon 0.8.0) cancels a pending order when the sender is its buyer
 - `hub` (bot 2026-11-27, companion 0.7.9, addon 0.7.0): the tabs of the addon's « Bagarre club » window
   for the player (its Discord account, from the battletag or a linked character), already worded by the
   bot: `titles` { bank, follow, craft }, `trophies`, `trophiesTotal`, `next` [{ name, desc, progress,
