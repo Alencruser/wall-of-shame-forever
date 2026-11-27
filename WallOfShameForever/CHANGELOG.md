@@ -1,5 +1,14 @@
 # Wall of Shame Forever
 
+## v0.8.3 (2026-11-27)
+
+- Requests: gifts. On someone's request, « Je donne… » (replaces « Je m'en occupe ») announces how many you
+  give (up to what is still needed) and how: by mail or in person. The line shows « Reçu 20/100 · 30 en
+  attente (courrier 20, main propre 10) ».
+- The asker is told in chat at login and confirms each gift (« À confirmer » → Reçu / Pas reçu); the received
+  quantity goes up by itself. A gift not confirmed within 14 days counts as received. Needs the companion 0.8.2.
+- Tooltip and loot line: the quantity still needed
+
 ## v0.8.2 (2026-11-27)
 
 - Requests: dropping an item on the slot (or clicking the slot with an item in hand) puts it in the slot;

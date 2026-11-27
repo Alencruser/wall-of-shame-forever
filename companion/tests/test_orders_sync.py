@@ -91,6 +91,12 @@ class PayloadTest(unittest.TestCase):
         self.assertIsNone(events.parse_payload(base + "new|6a1b2c3d123||5||", "realtime"))  # no item
         self.assertIsNone(events.parse_payload(base + "steal|6a1b2c3d123||||", "realtime"))
         self.assertIsNone(events.parse_payload(base + "take|bad id!||||", "realtime"))
+        ev = events.parse_payload(base + "give|6a1b2c3d123|1468|20|mail|g6a1b2c001", "realtime")
+        self.assertEqual((ev["action"], ev["qty"], ev["reward"], ev["note"]), ("give", 20, "mail", "g6a1b2c001"))
+        self.assertIsNone(events.parse_payload(base + "give|6a1b2c3d123|1468|20|pigeon|g6a1b2c001", "realtime"))
+        self.assertIsNone(events.parse_payload(base + "give|6a1b2c3d123|1468|0|hand|g6a1b2c001", "realtime"))
+        self.assertEqual(events.parse_payload(base + "got|6a1b2c3d123||||g6a1b2c001", "realtime")["action"], "got")
+        self.assertIsNone(events.parse_payload(base + "notgot|6a1b2c3d123||||", "realtime"))
 
     def test_outbox_sends_requests_and_activities(self):
         # companion 0.8.0 crashed here (KeyError 'zone'): both fell into the death branch

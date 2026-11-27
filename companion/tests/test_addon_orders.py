@@ -757,7 +757,7 @@ class RequestsTest(unittest.TestCase):
         self.assertTrue(panel.IsShown(panel))
         self.assertEqual(panel.listCap._text, "Demandes ouvertes (2)")
         rows = [r for r in a.lua_list(panel.rows) if r.IsShown(r)]
-        self.assertEqual(rows[0].button.label._text, "Je m'en occupe")
+        self.assertEqual(rows[0].button.label._text, "Je donne\u2026")
         self.assertEqual(rows[1].button.label._text, "Fermer")
         self.assertIn("récompense : 2 po", rows[0].line._text)
         # publish from the form
@@ -767,6 +767,90 @@ class RequestsTest(unittest.TestCase):
         ev = self.parse(a.strips[-1])
         self.assertEqual((ev["action"], ev["item"], ev["qty"]), ("new", 4306, 3))
         self.assertEqual(panel.listCap._text, "Demandes ouvertes (3)")
+
+    GIFTED = [{"id": "abc123", "item": 1468, "qty": 100, "by": "Lwi Zi", "byClass": "MAGE", "at": 1763000000,
+               "takers": "", "mine": False, "taking": False, "received": 20, "waiting": 30, "waitMail": 20,
+               "waitHand": 10, "gifts": ["gaa1;Lex;20;mail;p", "gaa2;Bob;10;hand;p", "gaa0;Lex;20;mail;r"]},
+              {"id": "def456", "item": 2589, "qty": 20, "by": "Chamy Chan", "byClass": "SHAMAN", "at": 1763000100,
+               "takers": "", "mine": True, "taking": False, "received": 0, "waiting": 5, "waitMail": 5,
+               "waitHand": 0, "gifts": ["gaa9;Lwi Zi;5;mail;p"]}]
+
+    def test_gifts(self):
+        # v0.8.3: a gift on someone's request (mail or in person), what is left, the asker confirms
+        a = self.addon(bot=self.GIFTED)
+        req = a.ns.Requests
+        shown = {r.id: r for r in a.lua_list(req.List())}
+        other, mine = shown["abc123"], shown["def456"]
+        self.assertEqual((other.received, other.waiting, other.left), (20, 30, 50))
+        self.assertEqual(req.StatusText(other), "Reçu 20/100  \u00b7  30 en attente (courrier 20, main propre 10)")
+        self.assertEqual(len(a.lua_list(other.toConfirm)), 0)
+        self.assertEqual([g.name for g in a.lua_list(mine.toConfirm)], ["Lwi Zi"])
+        # too many, no mode, then a real gift
+        self.assertEqual(req.Give(other, 51, "mail"), (None, "req_err_give_qty"))
+        self.assertEqual(req.Give(other, 10, "pigeon"), (None, "req_err_give_mode"))
+        self.assertEqual(req.Give(mine, 1, "mail"), (None, "req_err_give_qty"))
+        gid = req.Give(other, 15, "hand")
+        ev = events.parse_payload(a.lua_list(a.db.outbox)[-1], "realtime")
+        self.assertEqual((ev["action"], ev["request"], ev["qty"], ev["reward"], ev["note"]), ("give", "abc123", 15, "hand", gid))
+        self.assertIn(gid, ev["id"])
+        other = {r.id: r for r in a.lua_list(req.List())}["abc123"]
+        self.assertEqual((other.waiting, other.waitHand, other.left, other.pending), (45, 25, 35, True))
+        # the bot has it now: no longer added
+        bot = [dict(self.GIFTED[0], waiting=45, waitHand=25, gifts=self.GIFTED[0]["gifts"] + [gid + ";Chamy Chan;15;hand;p"]),
+               self.GIFTED[1]]
+        a.g.WallOfShameForever_Orders.hub.requests = a.to_lua(bot)
+        other = {r.id: r for r in a.lua_list(req.List())}["abc123"]
+        self.assertEqual((other.waiting, other.left), (45, 35))
+        self.assertIsNone(a.db.requestGifts[gid])
+        # the asker confirms: received at once here
+        mine = {r.id: r for r in a.lua_list(req.List())}["def456"]
+        req.Confirm(mine, a.lua_list(mine.toConfirm)[0], True)
+        ev = events.parse_payload(a.lua_list(a.db.outbox)[-1], "realtime")
+        self.assertEqual((ev["action"], ev["note"]), ("got", "gaa9"))
+        mine = {r.id: r for r in a.lua_list(req.List())}["def456"]
+        self.assertEqual((mine.received, mine.waiting, len(a.lua_list(mine.toConfirm))), (5, 0, 0))
+        # the tooltip shows what is still needed
+        self.assertEqual([r.qty - r.received for r in a.lua_list(req.ForItem(1468))], [80])
+
+    def test_gift_windows_and_notice(self):
+        a = self.addon(bot=self.GIFTED)
+        a.ns.Hub.Show("requests")
+        panel = a.g.WallOfShameForeverRequests
+        self.assertEqual(len(a.lua_list(a.ns.Requests.ToConfirm())), 1)
+        rows = [r for r in a.lua_list(panel.rows) if r.IsShown(r)]
+        by_id = {r.req.id: r for r in rows}
+        self.assertEqual(by_id["def456"].button.label._text, "À confirmer (1)")
+        self.assertTrue(by_id["def456"].close.IsShown(by_id["def456"].close))
+        # « Je donne… »: the window, a mode, the gift
+        b = by_id["abc123"].button
+        b.GetScript(b, "OnClick")(b)
+        w = a.ns.Requests.GiveWindow()
+        self.assertTrue(w.IsShown(w))
+        self.assertEqual(w.qty._text, "50")
+        w.qty.SetText(w.qty, "12")
+        mail = w.modes.mail
+        mail.GetScript(mail, "OnClick")(mail)
+        w.ok.GetScript(w.ok, "OnClick")(w.ok)
+        self.assertFalse(w.IsShown(w))
+        ev = events.parse_payload(a.lua_list(a.db.outbox)[-1], "realtime")
+        self.assertEqual((ev["action"], ev["qty"], ev["reward"]), ("give", 12, "mail"))
+        # « À confirmer »: the window, Pas reçu
+        b = by_id["def456"].button
+        b.GetScript(b, "OnClick")(b)
+        cw = a.ns.Requests.ConfirmWindow()
+        self.assertTrue(cw.IsShown(cw))
+        row = a.lua_list(cw.rows)[0]
+        self.assertIn("Lwi Zi", row.text._text)
+        row.no.GetScript(row.no, "OnClick")(row.no)
+        self.assertEqual(events.parse_payload(a.lua_list(a.db.outbox)[-1], "realtime")["action"], "notgot")
+        self.assertFalse(cw.IsShown(cw))  # nothing left to confirm
+
+    def test_gift_notice_once(self):
+        a = self.addon(bot=self.GIFTED)
+        a.ns.Requests.NoticeGifts()  # once at login already, then never again
+        notices = [m for m in a.lua_list(a.g.STATE.chat) if "te donne" in m]
+        self.assertEqual(len(notices), 1)
+        self.assertIn("Lwi Zi te donne 5", notices[0])
 
     def test_drop_on_the_slot(self):
         # v0.8.2: GetCursorInfo returns several values (kind, id, link); « X and X() » kept only the kind

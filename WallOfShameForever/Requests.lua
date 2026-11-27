@@ -5,6 +5,8 @@
 -- The actions go to the companion like the other events (strip in real time, outbox on /reload or logout):
 --   2|R|id|name|realm|guild|level|class|time|battletag|action|request|item|qty|reward|note
 --   action: new, take, drop (no longer takes care of it) or close (the asker); request: its id
+--   v0.8.3, gifts: give (qty given, reward = mode mail or hand, note = the gift's id), got / notgot (the asker
+--   confirms a gift, note = its id). A gift not confirmed within 14 days counts as received (bot).
 -- The open requests come back from the bot in the companion's file (WallOfShameForever_Orders.hub.requests),
 -- read at login or /reload; until then the actions done here show at once (db.requestsLocal).
 -- Loaded after Orders.lua (ns.QueueStrip) and Hub.lua.
@@ -60,6 +62,77 @@ local function LocalActions()
     return db.requestsLocal
 end
 
+-- gifts announced here (gift id → { request, qty, mode, at, by }) and confirmations done here (gift id →
+-- { request, action, at }), shown until the bot's list has them
+local function LocalGifts()
+    if not db then return {} end
+    if type(db.requestGifts) ~= "table" then db.requestGifts = {} end
+    return db.requestGifts
+end
+
+local function LocalConfirms()
+    if not db then return {} end
+    if type(db.requestConfirms) ~= "table" then db.requestConfirms = {} end
+    return db.requestConfirms
+end
+
+-- « id;name;qty;mode;status » (status p pending, r received, x not received) → table
+local function ParseGift(text)
+    local id, name, qty, mode, status = tostring(text):match("^([^;]+);([^;]*);(%d+);(%a+);(%a)$")
+    if not id then return nil end
+    return { id = id, name = name, qty = tonumber(qty), mode = mode, status = status }
+end
+
+local function FindGift(req, id)
+    for _, g in ipairs(req.gifts) do
+        if g.id == id then return g end
+    end
+end
+
+local function AddWaiting(req, mode, n)
+    if mode == "mail" then req.waitMail = req.waitMail + n else req.waitHand = req.waitHand + n end
+end
+
+-- The gifts announced or confirmed here, on top of the bot's numbers; then what is left and what to confirm
+local function Overlay(list)
+    local now, bot = time(), BotList()
+    local byId = {}
+    for _, req in ipairs(list) do byId[req.id] = req end
+    local gifts, confirms = LocalGifts(), LocalConfirms()
+    for id, g in pairs(gifts) do
+        local req = byId[g.request]
+        if (req and FindGift(req, id)) or now - (g.at or 0) > LOCAL_DAYS * 86400 or (bot and not req) then
+            gifts[id] = nil
+        elseif req then
+            table.insert(req.gifts, 1, { id = id, name = g.by or "?", qty = g.qty, mode = g.mode, status = "p", pending = true })
+            AddWaiting(req, g.mode, g.qty)
+            req.pending = true
+        end
+    end
+    for id, c in pairs(confirms) do
+        local req = byId[c.request]
+        local gift = req and FindGift(req, id)
+        if (gift and gift.status ~= "p") or now - (c.at or 0) > LOCAL_DAYS * 86400 or (bot and not req) then
+            confirms[id] = nil
+        elseif gift then
+            gift.status, gift.pending = c.action == "got" and "r" or "x", true
+            AddWaiting(req, gift.mode, -gift.qty)
+            if c.action == "got" then req.received = req.received + gift.qty end
+        end
+    end
+    for _, req in ipairs(list) do
+        req.waiting = req.waitMail + req.waitHand
+        req.left = math.max(0, req.qty - req.received - req.waiting)
+        req.toConfirm = {}
+        if req.mine then
+            for _, g in ipairs(req.gifts) do
+                if g.status == "p" and not g.pending then req.toConfirm[#req.toConfirm + 1] = g end
+            end
+        end
+    end
+    return list
+end
+
 -- What the tab shows: the bot's list with this player's actions not seen there yet (a new request, a
 -- request closed, taken or dropped here). Local actions the bot already shows, or too old, are forgotten.
 function Requests.List()
@@ -73,7 +146,15 @@ function Requests.List()
             local copy = { id = tostring(r.id), item = tonumber(r.item), qty = tonumber(r.qty) or 1,
                 reward = tostring(r.reward or ""), note = tostring(r.note or ""), by = tostring(r.by or "?"),
                 byClass = r.byClass ~= "" and r.byClass or nil, at = tonumber(r.at) or 0,
-                takers = tostring(r.takers or ""), mine = r.mine == true, taking = r.taking == true }
+                takers = tostring(r.takers or ""), mine = r.mine == true, taking = r.taking == true,
+                received = tonumber(r.received) or 0, waitMail = tonumber(r.waitMail) or 0,
+                waitHand = tonumber(r.waitHand) or 0, gifts = {} }
+            if type(r.gifts) == "table" then
+                for _, text in ipairs(r.gifts) do
+                    local gift = ParseGift(text)
+                    if gift then copy.gifts[#copy.gifts + 1] = gift end
+                end
+            end
             seen[copy.id] = true
             if a and a.action == "new" then actions[copy.id] = nil end -- the bot has it now
             if a and (a.action == "take" and copy.taking or a.action == "drop" and not copy.taking) then
@@ -94,10 +175,10 @@ function Requests.List()
         elseif a.action == "new" and not seen[id] then
             table.insert(list, 1, { id = id, item = a.item, qty = a.qty, reward = a.reward or "", note = a.note or "",
                 by = a.by or "?", byClass = a.byClass, at = a.at, takers = "", mine = true, taking = false,
-                pending = true })
+                pending = true, received = 0, waitMail = 0, waitHand = 0, gifts = {} })
         end
     end
-    return list
+    return Overlay(list)
 end
 
 -- The payload for the companion; the note is cut so it fits the strip
@@ -105,7 +186,9 @@ function Requests.Payload(action, request, item, qty, reward, note)
     local name, realm, guild, battleTag = ns.Identity()
     local _, classFile = UnitClass("player")
     local key = name .. "-" .. realm
-    local base = table.concat({ "2", "R", key .. ":R:" .. request .. ":" .. action .. ":" .. time(), name, realm, guild,
+    -- a gift's id in the event's id: two gifts or confirmations in the same second stay two events
+    local gift = (action == "give" or action == "got" or action == "notgot") and (":" .. tostring(note)) or ""
+    local base = table.concat({ "2", "R", key .. ":R:" .. request .. ":" .. action .. gift .. ":" .. time(), name, realm, guild,
         UnitLevel("player"), classFile or "", time(), battleTag, action, request, item or "", qty or "",
         Short(reward, REWARD_MAX) }, "|") .. "|"
     local room = (ns.STRIP_MAX_PAYLOAD or 240) - #base
@@ -143,11 +226,67 @@ function Requests.Act(request, action)
     return payload
 end
 
--- Open requests of the others for this item (tooltip, loot)
+-- Announce a gift on someone's request: qty (1 to what is still needed), mode mail or hand. Returns the
+-- gift's id, or nil and why
+function Requests.Give(req, qty, mode)
+    if not db or not req or req.mine then return nil, "req_err_give_qty" end
+    qty = math.floor(tonumber(qty) or 0)
+    if qty < 1 or qty > (req.left or req.qty) then return nil, "req_err_give_qty" end
+    if mode ~= "mail" and mode ~= "hand" then return nil, "req_err_give_mode" end
+    local id = "g" .. NewId()
+    LocalGifts()[id] = { request = req.id, qty = qty, mode = mode, at = time(), by = (ns.Identity()) }
+    Send(Requests.Payload("give", req.id, req.item, qty, mode, id))
+    return id
+end
+
+-- The asker confirms a gift: received (got = true) or not
+function Requests.Confirm(req, gift, got)
+    if not db or not req or not gift then return nil end
+    local action = got and "got" or "notgot"
+    LocalConfirms()[gift.id] = { request = req.id, action = action, at = time() }
+    local payload = Requests.Payload(action, req.id, "", "", "", gift.id)
+    Send(payload)
+    return payload
+end
+
+-- Open requests of the others for this item, still needed (tooltip, loot)
 function Requests.ForItem(itemId)
     local out = {}
     for _, r in ipairs(Requests.List()) do
-        if r.item == itemId and not r.mine then out[#out + 1] = r end
+        if r.item == itemId and not r.mine and r.qty - r.received > 0 then out[#out + 1] = r end
+    end
+    return out
+end
+
+-- « mail 20, in person 10 »
+local function ModesText(req)
+    local parts = {}
+    if req.waitMail > 0 then parts[#parts + 1] = L("req_mode_mail_n", req.waitMail) end
+    if req.waitHand > 0 then parts[#parts + 1] = L("req_mode_hand_n", req.waitHand) end
+    return table.concat(parts, ", ")
+end
+Requests.ModesText = ModesText
+
+-- « Received 20/100 · 30 on the way (mail 20, in person 10) »
+function Requests.StatusText(req)
+    local parts = {}
+    if req.received > 0 or req.waiting > 0 then
+        parts[1] = L("req_received", req.received, req.qty)
+        if req.waiting > 0 then parts[2] = L("req_waiting", req.waiting, ModesText(req)) end
+        if req.mine and req.received >= req.qty then parts[#parts + 1] = L("req_complete") end
+    elseif req.takers ~= "" then
+        parts[1] = L("req_takers", req.takers)
+    else
+        parts[1] = L("req_nobody")
+    end
+    return table.concat(parts, "  \194\183  ")
+end
+
+-- the gifts to confirm on my requests (tab label, login notice)
+function Requests.ToConfirm()
+    local out = {}
+    for _, r in ipairs(Requests.List()) do
+        for _, g in ipairs(r.toConfirm) do out[#out + 1] = { req = r, gift = g } end
     end
     return out
 end
@@ -214,18 +353,26 @@ local function Refresh()
         if req.note ~= "" then parts[#parts + 1] = "\194\171 " .. req.note .. " \194\187" end
         if req.reward ~= "" then parts[#parts + 1] = "|cffffd36b" .. L("req_reward_is", req.reward) .. "|r" end
         r.line:SetText(table.concat(parts, "  "))
-        local status = req.takers ~= "" and L("req_takers", req.takers) or L("req_nobody")
+        local status = Requests.StatusText(req)
         if req.pending then status = status .. "  |cff8f8f8f" .. L("req_pending") .. "|r" end
         r.status:SetText(status)
-        if req.mine then
+        r.close:Hide()
+        r.button:Enable()
+        if req.mine and #req.toConfirm > 0 then
+            r.button:SetLabel(L("req_confirm_n", #req.toConfirm))
+            r.button:SetVariant("gold")
+            r.close:SetLabel(L("req_close"))
+            r.close:Show()
+        elseif req.mine then
             r.button:SetLabel(L("req_close"))
             r.button:SetVariant("dark")
-        elseif req.taking then
-            r.button:SetLabel(L("req_drop"))
-            r.button:SetVariant("dark")
-        else
-            r.button:SetLabel(L("req_take"))
+        elseif req.left > 0 then
+            r.button:SetLabel(L("req_give"))
             r.button:SetVariant("gold")
+        else
+            r.button:SetLabel(L("req_covered"))
+            r.button:SetVariant("dark")
+            r.button:Disable()
         end
         r:ClearAllPoints()
         r:SetPoint("TOPLEFT", panel.scroll.child, "TOPLEFT", 0, -(i - 1) * ROW_H)
@@ -319,7 +466,7 @@ local function Build(parent)
 
     f.qtyLabel = UI.Text(f, "GameFontHighlightSmall", UI.MUTED)
     f.qtyLabel:SetPoint("TOPLEFT", 420, -36)
-    f.qty = Edit(f, 46, 3, true)
+    f.qty = Edit(f, 56, 3, true)
     f.qty:SetPoint("TOPLEFT", f.qtyLabel, "BOTTOMLEFT", 6, -2)
     f.qty:SetText("1")
     f.rewardLabel = UI.Text(f, "GameFontHighlightSmall", UI.MUTED)
@@ -371,26 +518,40 @@ local function Build(parent)
         r.icon:SetAllPoints()
         r.name = UI.Text(r, "GameFontNormal")
         r.name:SetPoint("TOPLEFT", r.iconFrame, "TOPRIGHT", 10, -1)
-        r.name:SetPoint("RIGHT", -150, 0)
+        r.name:SetPoint("RIGHT", -230, 0)
         r.name:SetWordWrap(false)
         r.line = UI.Text(r, "GameFontHighlightSmall")
         r.line:SetPoint("TOPLEFT", r.name, "BOTTOMLEFT", 0, -3)
-        r.line:SetPoint("RIGHT", -150, 0)
+        r.line:SetPoint("RIGHT", -230, 0)
         r.line:SetWordWrap(false)
         r.status = UI.Text(r, "GameFontHighlightSmall", UI.MUTED)
         r.status:SetPoint("TOPLEFT", r.line, "BOTTOMLEFT", 0, -3)
-        r.status:SetPoint("RIGHT", -150, 0)
+        r.status:SetPoint("RIGHT", -230, 0)
         r.status:SetWordWrap(false)
+        local function Close(req)
+            Requests.Act(req, "close")
+            ns.Print(L("req_did_close", (ItemInfo(req.item)) or ("#" .. req.item)))
+            Refresh()
+            if ns.Hub then ns.Hub.Refresh() end
+        end
         r.button = UI.Button(r, { width = 136, height = 22, size = 12, onClick = function(self)
             local req = self:GetParent().req
             if not req then return end
-            local action = req.mine and "close" or req.taking and "drop" or "take"
-            Requests.Act(req, action)
-            ns.Print(L("req_did_" .. action, (ItemInfo(req.item)) or ("#" .. req.item)))
-            Refresh()
-            if ns.Hub then ns.Hub.Refresh() end
+            if req.mine and #req.toConfirm > 0 then
+                Requests.ShowConfirm(req)
+            elseif req.mine then
+                Close(req)
+            else
+                Requests.ShowGive(req)
+            end
         end })
         r.button:SetPoint("RIGHT", -4, 0)
+        r.close = UI.Button(r, { width = 76, height = 22, size = 12, variant = "dark", onClick = function(self)
+            local req = self:GetParent().req
+            if req then Close(req) end
+        end })
+        r.close:SetPoint("RIGHT", r.button, "LEFT", -6, 0)
+        r.close:Hide()
         r.sep = UI.Line(r, 0.12)
         r.sep:SetPoint("BOTTOMLEFT", 0, 0)
         r.sep:SetPoint("BOTTOMRIGHT", 0, 0)
@@ -409,10 +570,220 @@ local function Build(parent)
     return panel
 end
 
+-------------------------------------------------------------------------------
+-- « Je donne… » window: how many (up to what is still needed), by mail or in person
+-------------------------------------------------------------------------------
+
+local giveWin, confirmWin
+
+local function FindRequest(id)
+    for _, r in ipairs(Requests.List()) do
+        if r.id == id then return r end
+    end
+end
+
+local function SmallWindow(name, width, height, key)
+    local w = CreateFrame("Frame", name, UIParent)
+    w:SetSize(width, height)
+    w:SetFrameStrata("FULLSCREEN_DIALOG")
+    w:SetToplevel(true)
+    UI.Window(w)
+    UI.Movable(w, db, key)
+    UI.Appear(w, db)
+    tinsert(UISpecialFrames, name)
+    w.ribbon = UI.Ribbon(w, 18)
+    w.ribbon:SetPoint("TOP", 0, 14)
+    w.close = UI.Close(w, function() w:Hide() end)
+    w.close:SetPoint("TOPRIGHT", -24, -24)
+    w.item = UI.Text(w, "GameFontNormalLarge")
+    w.item:SetPoint("TOPLEFT", 34, -50)
+    w.item:SetPoint("RIGHT", -60, 0)
+    w.item:SetWordWrap(false)
+    w.info = UI.Text(w, "GameFontHighlightSmall", UI.MUTED)
+    w.info:SetPoint("TOPLEFT", w.item, "BOTTOMLEFT", 0, -6)
+    w.info:SetPoint("RIGHT", -34, 0)
+    w:Hide()
+    return w
+end
+
+local function ItemTitle(req)
+    local name, _, hex = ItemInfo(req.item)
+    return hex .. (name or ("#" .. req.item)) .. "|r"
+end
+
+local function RefreshGive()
+    local w = giveWin
+    local req = w and w.req
+    if not req then return end
+    w.ribbon:SetText(L("req_give_title"))
+    w.item:SetText(ItemTitle(req))
+    local by = ns.ClassColored and ns.ClassColored(req.by, req.byClass) or req.by
+    w.info:SetText(L("req_give_left", req.left, req.qty, by))
+    w.qtyLabel:SetText(L("req_give_qty"))
+    w.howLabel:SetText(L("req_give_how"))
+    for mode, b in pairs(w.modes) do
+        b:SetLabel(L("req_mode_" .. mode))
+        b:SetVariant(w.mode == mode and "gold" or "dark")
+    end
+    w.ok:SetLabel(L("req_give_ok"))
+    if w.mode and req.left > 0 then w.ok:Enable() else w.ok:Disable() end
+end
+
+local function CreateGiveWindow()
+    local w = SmallWindow("WallOfShameForeverGive", 420, 250, "givePosition")
+    w.qtyLabel = UI.Text(w, "GameFontHighlight", UI.MUTED)
+    w.qtyLabel:SetPoint("TOPLEFT", 34, -110)
+    w.qty = Edit(w, 56, 3, true)
+    w.qty:SetPoint("LEFT", w.qtyLabel, "RIGHT", 12, 0)
+    w.howLabel = UI.Text(w, "GameFontHighlight", UI.MUTED)
+    w.howLabel:SetPoint("TOPLEFT", 34, -148)
+    w.modes = {}
+    local prev
+    for _, mode in ipairs({ "mail", "hand" }) do
+        local b = UI.Button(w, { width = 120, height = 24, size = 12, onClick = function()
+            w.mode = mode
+            RefreshGive()
+        end })
+        if prev then b:SetPoint("LEFT", prev, "RIGHT", 8, 0) else b:SetPoint("LEFT", w.howLabel, "RIGHT", 12, 0) end
+        w.modes[mode] = b
+        prev = b
+    end
+    w.ok = UI.Button(w, { width = 220, onClick = function()
+        local req = w.req
+        if not req then return end
+        local qty = w.qty:GetText()
+        local id, err = Requests.Give(req, qty, w.mode)
+        if not id then
+            ns.Print(L(err or "req_err_give_qty"))
+            return
+        end
+        ns.Print(L("req_did_give", tonumber(qty), ItemTitle(req), L("req_via_" .. w.mode)))
+        w:Hide()
+        Refresh()
+        if ns.Hub then ns.Hub.Refresh() end
+    end })
+    w.ok:SetPoint("BOTTOM", 0, 34)
+    giveWin = w
+end
+
+function Requests.ShowGive(req)
+    if not db or not req then return end
+    if not giveWin then CreateGiveWindow() end
+    if giveWin.req ~= req then giveWin.mode = nil end
+    giveWin.req = req
+    giveWin.qty:SetText(tostring(req.left))
+    giveWin:Show()
+    RefreshGive()
+end
+
+function Requests.GiveWindow()
+    return giveWin
+end
+
+-------------------------------------------------------------------------------
+-- « À confirmer » window (the asker): each gift announced, Reçu / Pas reçu
+-------------------------------------------------------------------------------
+
+local CONFIRM_ROW_H = 34
+
+local function RefreshConfirm()
+    local w = confirmWin
+    if not (w and w.reqId) then return end
+    local req = FindRequest(w.reqId)
+    if not req or #req.toConfirm == 0 then
+        w:Hide()
+        return
+    end
+    w.req = req
+    w.ribbon:SetText(L("req_confirm_title"))
+    w.item:SetText(ItemTitle(req))
+    w.info:SetText(Requests.StatusText(req))
+    for _, row in ipairs(w.rows) do row:Hide() end
+    for i, gift in ipairs(req.toConfirm) do
+        local row = w.rows[i]
+        if not row then
+            row = CreateFrame("Frame", nil, w)
+            row:SetHeight(CONFIRM_ROW_H)
+            row.text = UI.Text(row, "GameFontHighlight")
+            row.text:SetPoint("LEFT", 0, 0)
+            row.text:SetPoint("RIGHT", -200, 0)
+            row.text:SetWordWrap(false)
+            row.no = UI.Button(row, { width = 96, height = 22, size = 12, variant = "red", onClick = function(self)
+                local g = self:GetParent().gift
+                Requests.Confirm(w.req, g, false)
+                ns.Print(L("req_did_notgot", g.name))
+                RefreshConfirm()
+                Refresh()
+                if ns.Hub then ns.Hub.Refresh() end
+            end })
+            row.no:SetPoint("RIGHT", 0, 0)
+            row.yes = UI.Button(row, { width = 90, height = 22, size = 12, onClick = function(self)
+                local g = self:GetParent().gift
+                Requests.Confirm(w.req, g, true)
+                ns.Print(L("req_did_got", g.name))
+                RefreshConfirm()
+                Refresh()
+                if ns.Hub then ns.Hub.Refresh() end
+            end })
+            row.yes:SetPoint("RIGHT", row.no, "LEFT", -6, 0)
+            w.rows[i] = row
+        end
+        row.gift = gift
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", 34, -100 - (i - 1) * CONFIRM_ROW_H)
+        row:SetPoint("RIGHT", -34, 0)
+        row.text:SetText(L("req_gift_line", gift.name, gift.qty, L("req_via_" .. (gift.mode == "mail" and "mail" or "hand"))))
+        row.yes:SetLabel(L("req_got"))
+        row.no:SetLabel(L("req_notgot"))
+        row:Show()
+    end
+    w.hint:SetText(L("req_confirm_hint"))
+    w:SetHeight(150 + #req.toConfirm * CONFIRM_ROW_H)
+end
+
+local function CreateConfirmWindow()
+    local w = SmallWindow("WallOfShameForeverConfirm", 520, 200, "confirmPosition")
+    w.rows = {}
+    w.hint = UI.Text(w, "GameFontHighlightSmall", UI.MUTED)
+    w.hint:SetPoint("BOTTOM", 0, 28)
+    confirmWin = w
+end
+
+function Requests.ShowConfirm(req)
+    if not db or not req then return end
+    if not confirmWin then CreateConfirmWindow() end
+    confirmWin.reqId = req.id
+    confirmWin:Show()
+    RefreshConfirm()
+end
+
+function Requests.ConfirmWindow()
+    return confirmWin
+end
+
+-- At login (the companion's file is read then): a chat line per new gift announced on my requests
+local function NoticeGifts()
+    if type(db.giftsTold) ~= "table" then db.giftsTold = {} end
+    local told, now, current = db.giftsTold, time(), {}
+    for _, c in ipairs(Requests.ToConfirm()) do
+        current[c.gift.id] = true
+        if not told[c.gift.id] then
+            told[c.gift.id] = now
+            ns.Print(L("req_gift_notice", c.gift.name, c.gift.qty, ItemTitle(c.req), L("req_via_" .. (c.gift.mode == "mail" and "mail" or "hand"))))
+        end
+    end
+    for id, at in pairs(told) do
+        if not current[id] and now - at > 30 * 86400 then told[id] = nil end
+    end
+end
+Requests.NoticeGifts = NoticeGifts
+
 ns.Hub.Register({ key = "requests", order = 25,
     label = function()
         local n = 0
         for _, r in ipairs(Requests.List()) do if not r.mine then n = n + 1 end end
+        local c = #Requests.ToConfirm()
+        if c > 0 then return L("hub_tab_requests_confirm", n, c) end
         return L("hub_tab_requests", n)
     end,
     build = Build, refresh = function() Refresh() end })
@@ -458,7 +829,7 @@ local function AddTooltipLines(tooltip, id)
     if not (db and id) then return end
     for _, r in ipairs(Requests.ForItem(id)) do
         local by = ns.ClassColored and ns.ClassColored(r.by, r.byClass) or r.by
-        tooltip:AddLine(L("req_tooltip", by, r.qty), UI.GOLD[1], UI.GOLD[2], UI.GOLD[3])
+        tooltip:AddLine(L("req_tooltip", by, r.qty - r.received), UI.GOLD[1], UI.GOLD[2], UI.GOLD[3])
     end
 end
 
@@ -488,7 +859,7 @@ local function OnLoot(message, who)
         if not looted[r.id] then
             looted[r.id] = true
             local by = ns.ClassColored and ns.ClassColored(r.by, r.byClass) or r.by
-            ns.Print(L("req_loot", by, r.qty, message:match("|c.-|r") or ("#" .. id)))
+            ns.Print(L("req_loot", by, r.qty - r.received, message:match("|c.-|r") or ("#" .. id)))
         end
     end
 end
@@ -504,6 +875,7 @@ events:SetScript("OnEvent", function(_, event, a, b)
         LocalActions()
         HookTooltips()
         HookLinks()
+        NoticeGifts()
     elseif event == "CHAT_MSG_LOOT" then
         OnLoot(a, b)
     elseif event == "GET_ITEM_INFO_RECEIVED" then

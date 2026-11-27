@@ -37,7 +37,10 @@ FIELDS = {
                        "role"]),
 }
 NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds", "item", "qty")
-REQUEST_ACTIONS = ("new", "take", "drop", "close")
+# give (addon 0.8.3): qty given, reward = mode (mail or hand), note = the gift's id; got / notgot: the asker
+# confirms a gift (note = its id)
+REQUEST_ACTIONS = ("new", "take", "drop", "close", "give", "got", "notgot")
+GIFT_MODES = ("mail", "hand")
 ORDER_STATUSES = ("done", "refused", "received", "cancelled")  # cancelled: by the buyer (addon 0.8.0)
 
 LUA_ESCAPES = {"n": "\n", "t": "\t", "\\": "\\", '"': '"', "'": "'"}
@@ -115,6 +118,10 @@ def parse_payload(payload, source):
         if ev["action"] not in REQUEST_ACTIONS or not re.fullmatch(r"[0-9a-zA-Z]{4,24}", ev["request"]):
             return None
         if ev["action"] == "new" and not (ev["item"] and ev["qty"] and 1 <= ev["qty"] <= 999):
+            return None
+        if ev["action"] == "give" and not (ev["qty"] and 1 <= ev["qty"] <= 999 and ev["reward"] in GIFT_MODES):
+            return None
+        if ev["action"] in ("give", "got", "notgot") and not re.fullmatch(r"[0-9a-zA-Z]{4,24}", ev["note"]):
             return None
     elif kind == "banklog":
         ev["lines"] = parse_bank_lines(ev["lines"])

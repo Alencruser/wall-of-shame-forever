@@ -261,6 +261,12 @@ send no `placed`; companions before 0.7.2 ignore it.
   `request` events: `2|R|id|name|realm|guild|level|class|time|battletag|action|request|item|qty|reward|note`,
   action `new` (item, qty 1 to 999, reward and note optional), `take`, `drop` (someone else) or `close` (the
   asker only); the bot ignores (200) an unknown request, a close by someone else, a take by the asker
+- gifts on a request (companion 0.8.2, addon 0.8.3): each request also has `received`, `waiting`, `waitMail`,
+  `waitHand` (quantities received, announced and not confirmed yet, by mail or in person) and `gifts`
+  (« id;name;qty;mode;status », status `p` pending, `r` received, `x` not received; pending first, 12 at
+  most). Actions: `give` (someone else: qty given, cut to what is still needed; reward = mode `mail` or
+  `hand`; note = the gift's id), `got` / `notgot` (the asker confirms a gift; note = its id). A gift pending
+  for 14 days is received automatically. Closed requests keep their gifts (history)
 - `hub.activities` (addon 0.8.0): each activity also has `id` (its Discord card), `type`, `size`, `levelMin`,
   `group` (« name;role;level » per member), `free` ({ tank, heal, dps } places left, dungeon only), `joined`
   and `myRole` (this player). Sign-ups come as `activity` events:
