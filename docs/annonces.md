@@ -18,6 +18,7 @@ Compagnon sorti sans annonce : une ligne <!-- sans-annonce: Compagnon X.Y.Z --> 
 (le bot ne la lit pas comme une annonce, le workflow l'accepte à la place de l'entrée).
 -->
 
+<!-- sans-annonce: Compagnon 0.7.9 -->
 <!-- sans-annonce: Compagnon 0.7.8 -->
 <!-- sans-annonce: Compagnon 0.7.7 -->
 <!-- sans-annonce: Compagnon 0.7.6 -->
