@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.9.1 (2026-11-27)
+
+- Armurerie: talents read on WoW Forever, which has no Classic talent functions: the 3 trees, each talent's
+  place, rank and spell come from the game's talent tree (the site's « Talents » tab was empty)
+
 ## v0.9.0 (2026-11-27)
 
 - Armurerie: your gear (with enchants), the stats of the character sheet and your talents are sent to the

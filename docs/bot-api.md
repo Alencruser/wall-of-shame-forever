@@ -205,8 +205,9 @@ every reading:
   `dmgMin` `dmgMax` `speed` `hit` `crit`, ranged `rap` `rdmgMin` `rdmgMax` `rspeed` `rcrit`, spells `sp`
   (best school) `sp2`…`sp7` (holy, fire, nature, frost, shadow, arcane) `heal` `scrit` `shit` `mp5` `mp5c`,
   defense `def` `dodge` `parry` `block` and resistances `res2`…`res6` (fire, nature, frost, shadow, arcane)
-- `talents`: one entry per tree; `spell`: the talent's spell from its tooltip, `null` if the client did not
-  give it
+- `talents`: one entry per tree, left to right as in game; `spell`: the talent's spell, `null` if the client
+  did not give it. On WoW Forever (addon v0.9.1) the trees come from the trait tree and have no `name` (`""`):
+  the bot names them by class and order
 - `off`: `true` when the player turned off « Montrer mon équipement et mes talents sur le site »: `gear`,
   `stats` and `talents` are empty, remove the character from the armory
 - keep the latest reading per character (`time`); an older one arriving late changes nothing

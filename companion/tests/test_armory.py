@@ -127,6 +127,48 @@ class ArmoryTest(unittest.TestCase):
         self.assertEqual(self.readings(), [])
 
 
+TRAIT_STUBS = r"""
+GetNumTalentTabs, GetTalentTabInfo, GetNumTalents, GetTalentInfo = nil, nil, nil, nil
+-- WoW Forever: one trait tree, the class's trees side by side (positions as the real client gives them)
+local NODES = {
+    { ID = 1, posX = 1620, posY = 2130, activeRank = 2, maxRanks = 5, entryIDs = { 11 }, activeEntry = { entryID = 11 } },
+    { ID = 2, posX = 1020, posY = 2730, activeRank = 0, maxRanks = 3, entryIDs = { 12 } },
+    { ID = 3, posX = 1620, posY = 5730, activeRank = 1, maxRanks = 1, entryIDs = { 13 } },
+    { ID = 4, posX = 5020, posY = 2130, activeRank = 5, maxRanks = 5, entryIDs = { 14 } },
+    { ID = 5, posX = 6820, posY = 3930, activeRank = 0, maxRanks = 2, entryIDs = { 15 }, isVisible = false },
+}
+local SPELLS = { [11] = 16035, [12] = 30160, [13] = 16166, [14] = 16255, [15] = 1 }
+C_ClassTalents = { GetActiveConfigID = function() return 696711 end }
+C_Traits = {
+    GetConfigInfo = function() return { treeIDs = { 1082 } } end,
+    GetTreeNodes = function() local ids = {} for i, n in ipairs(NODES) do ids[i] = n.ID end return ids end,
+    GetNodeInfo = function(_, id) return NODES[id] end,
+    GetEntryInfo = function(_, entry) return { definitionID = entry + 100 } end,
+    GetDefinitionInfo = function(def) return { spellID = SPELLS[def - 100] } end,
+}
+C_Spell = { GetSpellName = function(id) return ({ [16035] = "Commotion", [16166] = "Maîtrise élémentaire" })[id] or ("Sort " .. id) end }
+"""
+
+
+class TraitTalentsTest(unittest.TestCase):
+    """WoW Forever has no Classic talent functions: the talents come from the trait tree (C_Traits)."""
+
+    def test_trees_tiers_and_columns_from_positions(self):
+        a = Addon(orders=[])
+        a.lua.execute(ARMORY_STUBS)
+        a.lua.execute(TRAIT_STUBS)
+        load = a.lua.eval("function(src, ns) assert(loadstring(src, 'Armory.lua'))('WallOfShameForever', ns) end")
+        with open(os.path.join(ADDON, "Armory.lua"), encoding="utf-8") as f:
+            load(f.read(), a.ns)
+        trees = events.parse_talents(a.ns.Armory.ReadTalents())
+        self.assertEqual([(t["name"], t["points"], len(t["talents"])) for t in trees], [("", 3, 3), ("", 5, 1)])
+        first = trees[0]["talents"]
+        self.assertEqual(first[0], {"spell": 16035, "tier": 1, "column": 2, "rank": 2, "max": 5, "name": "Commotion"})
+        self.assertEqual((first[1]["tier"], first[1]["column"], first[1]["rank"]), (2, 1, 0))
+        self.assertEqual((first[2]["tier"], first[2]["column"], first[2]["name"]), (7, 2, "Maîtrise élémentaire"))
+        self.assertEqual((trees[1]["talents"][0]["tier"], trees[1]["talents"][0]["column"]), (1, 1))
+
+
 class ParseTest(unittest.TestCase):
     def test_bad_entries_skipped(self):
         gear = events.parse_gear("1=10763.0.0.43.3;x=1.2.3.4.5;2=0.0.0.0.1;20=5.0.0.0.1;3=12.0.0.0.")

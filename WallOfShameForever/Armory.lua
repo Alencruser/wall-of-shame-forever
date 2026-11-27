@@ -153,7 +153,68 @@ local function CleanName(text) -- the talents' separators never appear in a name
     return (ns.Clean(text):gsub("[/%.]", " "))
 end
 
+-- WoW Forever: no Classic talent functions (GetTalentInfo…), the talents are a trait tree (C_Traits) holding the
+-- class's 3 trees side by side, left to right as in Classic. Each talent has a position: its tree from the
+-- gaps between positions, its tier from top to bottom and its column from left to right (600 apart).
+local GAP = 1500 -- more than this between two talents side by side: the next tree
+local STEP = 600
+
+local function SpellName(spell)
+    return Call(C_Spell and C_Spell.GetSpellName, spell) or (Call(GetSpellInfo, spell)) or ""
+end
+
+function Armory.ReadTraitTalents()
+    local T = C_Traits
+    local config = Call(C_ClassTalents and C_ClassTalents.GetActiveConfigID)
+    local info = config and type(T) == "table" and Call(T.GetConfigInfo, config)
+    if type(info) ~= "table" or type(info.treeIDs) ~= "table" then return "" end
+    local talents = {}
+    for _, treeID in ipairs(info.treeIDs) do
+        for _, nodeID in ipairs(Call(T.GetTreeNodes, treeID) or {}) do
+            local node = Call(T.GetNodeInfo, config, nodeID)
+            if type(node) == "table" and node.isVisible ~= false and node.posX and node.posY then
+                local entryID = node.activeEntry and node.activeEntry.entryID or (node.entryIDs or {})[1]
+                local entry = entryID and Call(T.GetEntryInfo, config, entryID)
+                local def = entry and entry.definitionID and Call(T.GetDefinitionInfo, entry.definitionID)
+                local spell = def and (def.overriddenSpellID or def.spellID)
+                if spell then
+                    talents[#talents + 1] = { x = node.posX, y = node.posY, spell = spell,
+                        rank = tonumber(node.activeRank or node.currentRank) or 0, max = tonumber(node.maxRanks) or 0,
+                        name = (def.overrideName and def.overrideName ~= "") and def.overrideName or SpellName(spell) }
+                end
+            end
+        end
+    end
+    if #talents == 0 then return "" end
+    -- trees: split where two positions side by side are far apart
+    table.sort(talents, function(a, b) return a.x < b.x end)
+    local groups, last = {}, nil
+    for _, t in ipairs(talents) do
+        if not last or t.x - last > GAP then groups[#groups + 1] = {} end
+        table.insert(groups[#groups], t)
+        last = t.x
+    end
+    local out = {}
+    for _, group in ipairs(groups) do
+        local minX, minY = math.huge, math.huge
+        for _, t in ipairs(group) do
+            minX, minY = math.min(minX, t.x), math.min(minY, t.y)
+        end
+        table.sort(group, function(a, b) return a.y < b.y or (a.y == b.y and a.x < b.x) end)
+        local list, points = {}, 0
+        for _, t in ipairs(group) do
+            points = points + t.rank
+            list[#list + 1] = table.concat({ t.spell, math.floor((t.y - minY) / STEP + 0.5) + 1,
+                math.floor((t.x - minX) / STEP + 0.5) + 1, t.rank, t.max, CleanName(t.name) }, ".")
+        end
+        -- no name from the game: the bot names the trees by class and order
+        out[#out + 1] = "/" .. points .. "/" .. table.concat(list, ",")
+    end
+    return table.concat(out, ";")
+end
+
 function Armory.ReadTalents()
+    if type(GetNumTalentTabs) ~= "function" or type(GetTalentInfo) ~= "function" then return Armory.ReadTraitTalents() end
     local trees = {}
     for tab = 1, tonumber((Call(GetNumTalentTabs))) or 0 do
         -- the tree's name: the first text GetTalentTabInfo gives (its results differ between clients)
@@ -221,8 +282,9 @@ function Armory.Report()
     local name, realm, guild, battleTag = ns.Identity()
     local key = name .. "-" .. realm
     db.gearReported = type(db.gearReported) == "table" and db.gearReported or {}
-    if db.gearReported[key] then return end
-    db.gearReported[key] = true
+    -- v0.9.1: again, with the talents read from the trait tree (WoW Forever)
+    if db.gearReported[key .. "#2"] then return end
+    db.gearReported[key .. "#2"] = true
     local missing = {}
     for _, fn in ipairs({ "UnitStat", "UnitArmor", "UnitAttackPower", "UnitDamage", "UnitAttackSpeed", "GetHitModifier",
         "GetCritChance", "UnitRangedAttackPower", "UnitRangedDamage", "GetRangedCritChance", "GetSpellBonusDamage",
