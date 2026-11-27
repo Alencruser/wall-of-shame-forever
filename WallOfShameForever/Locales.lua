@@ -57,8 +57,8 @@ ns.LOCALES.en = {
 
     -- craft orders (Orders.lua)
     orders_title = "Orders for %s",
-    orders_scope_char = "This character",
-    orders_scope_account = "All my characters",
+    orders_scope_char = "This character (%d)",
+    orders_scope_account = "My other characters (%d)",
     orders_done = "Done",
     orders_refuse = "Refuse",
     orders_level = "level %s",
@@ -413,8 +413,8 @@ ns.LOCALES.fr = {
 
     -- commandes d'artisanat (Orders.lua)
     orders_title = "Commandes de %s",
-    orders_scope_char = "Ce perso",
-    orders_scope_account = "Tous mes persos",
+    orders_scope_char = "Ce perso (%d)",
+    orders_scope_account = "Mes autres persos (%d)",
     orders_done = "Fait",
     orders_refuse = "Refuser",
     orders_level = "niv. %s",

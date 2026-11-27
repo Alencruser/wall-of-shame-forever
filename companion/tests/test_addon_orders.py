@@ -370,6 +370,24 @@ class RealmTest(unittest.TestCase):
         self.assertEqual(a.orders.Notify(), 2)
         self.assertIn("2 commandes en attente (pour %s)" % name, a.lua_list(a.g.STATE.chat)[-1])
 
+    def test_counts_this_character_and_the_others(self):
+        # v0.8.5: « À fabriquer » counts the account, « Ce perso (n) » and « Mes autres persos (n) » their own
+        name = ME.rsplit("-", 1)[0]
+        orders = [order("a1", artisan=ME), order("b1", artisan="Isa Lice-"), order("b2", artisan="Isa Lice-X"),
+                  order("z1", artisan="Stranger-X")]
+        a = Addon(orders=orders, db={"orderIdentity": {"battletag": "", "characters": [ME, "Isa Lice-"]}}).login()
+        self.assertEqual(len(a.lua_list(a.orders.List("account"))), 3)
+        self.assertEqual(sorted(o.id for o in a.lua_list(a.orders.List("others"))), ["b1", "b2"])
+        a.ns.Hub.Show("orders")
+        win = a.g.WallOfShameForeverOrders
+        self.assertEqual(win.tabCraft.label._text, "À fabriquer (3)")
+        self.assertEqual(win.scopeChar.label._text, "Ce perso (1)")
+        self.assertEqual(win.scopeAccount.label._text, "Mes autres persos (2)")
+        # « Mes autres persos »: only theirs, not this character's
+        win.scopeAccount.GetScript(win.scopeAccount, "OnClick")(win.scopeAccount)
+        self.assertEqual(win.total._text, "2 commandes en attente")
+        self.assertNotIn(name, win.scopeAccount.label._text)
+
 
 class WindowTest(unittest.TestCase):
     def test_smoke(self):

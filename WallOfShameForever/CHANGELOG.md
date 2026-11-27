@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.8.5 (2026-11-27)
+
+- Orders: « À fabriquer (n) » and the window's « Commandes (n) » tab count the orders of the whole account;
+  « Ce perso (n) » shows this character's, « Mes autres persos (n) » (was « Tous mes persos ») the other
+  characters' only
+
 ## v0.8.4 (2026-11-27)
 
 - Orders: an order to the character you play shows under « Ce perso » even when the realm differs (Forever

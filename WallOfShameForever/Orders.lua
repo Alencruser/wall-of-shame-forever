@@ -206,14 +206,15 @@ function Orders.Prune(handled, list)
 end
 
 -- Orders still to answer: scope "char" = made to this character, "account" = to any character
--- of the account
+-- of the account, "others" = to the account's other characters (not this one; v0.8.5)
 function Orders.Pending(list, handled, scope, me, characters)
     local mine = { [CharKey(me)] = true }
-    if scope == "account" then
+    if scope == "account" or scope == "others" then
         for _, character in ipairs(characters or {}) do
             if type(character) == "string" then mine[CharKey(character)] = true end
         end
     end
+    if scope == "others" then mine[CharKey(me)] = nil end
     local pending = {}
     for _, o in ipairs(list or {}) do
         if not handled[o.id] and mine[CharKey(o.artisan)] then pending[#pending + 1] = o end
@@ -616,8 +617,10 @@ local headerRows, itemRows, matRows = {}, {}, {}
 local state = { page = 1, mats = "buyer", sel = {} }
 Orders.ui = state -- for the tests
 
+-- the « To craft » tab's list: this character, or my other characters (saved as "account", its name
+-- before v0.8.5, when the button showed all of them)
 local function Scope()
-    return db and db.ordersScope == "account" and "account" or "char"
+    return db and db.ordersScope == "account" and "others" or "char"
 end
 
 -- "craft": orders to make (artisan side); "placed": the player's own orders (buyer side)
@@ -844,7 +847,7 @@ local function FillItem(r, entry, index)
         r.status:Hide()
         r.statusText = nil
         note = o.note ~= "" and ("\194\171 " .. o.note .. " \194\187") or ""
-        if Scope() == "account" and CharKey(o.artisan) ~= CharKey(me) then
+        if Scope() == "others" and CharKey(o.artisan) ~= CharKey(me) then
             local artisan = "|cff8f8f8f" .. L("orders_for", CharName(o.artisan)) .. "|r"
             note = note ~= "" and (artisan .. "  " .. note) or artisan
         end
@@ -969,10 +972,11 @@ Refresh = function()
     if not (win and win:IsShown()) then return end
     local tab = Tab()
     win.title:SetText(L("orders_title", CharName(me)))
-    win.scopeChar.label:SetText(L("orders_scope_char"))
-    win.scopeAccount.label:SetText(L("orders_scope_account"))
+    -- each button its own count; « To craft » counts the whole account
+    win.scopeChar.label:SetText(L("orders_scope_char", #Orders.List("char")))
+    win.scopeAccount.label:SetText(L("orders_scope_account", #Orders.List("others")))
     SetScopeButton(win.scopeChar, Scope() == "char")
-    SetScopeButton(win.scopeAccount, Scope() == "account")
+    SetScopeButton(win.scopeAccount, Scope() == "others")
     -- the scope (this character / all) only means something for the orders to craft
     win.scopeChar:SetShown(tab == "craft")
     win.scopeAccount:SetShown(tab == "craft")
@@ -983,7 +987,7 @@ Refresh = function()
     for _, o in ipairs(placed) do
         if o.status == "pending" and not CancelledHere(o) then placedPending[#placedPending + 1] = o end
     end
-    win.tabCraft.label:SetText(L("orders_tab_craft", #toCraft))
+    win.tabCraft.label:SetText(L("orders_tab_craft", #Orders.List("account")))
     win.tabPlaced.label:SetText(L("orders_tab_placed", #placedPending))
     SetScopeButton(win.tabCraft, tab == "craft")
     SetScopeButton(win.tabPlaced, tab == "placed")
@@ -1062,7 +1066,7 @@ local function CreateWindow(parent)
         state.page = 1
         Refresh()
     end
-    win.scopeAccount = MakeButton(win, 150, GREY, function() SetScope("account") end)
+    win.scopeAccount = MakeButton(win, 175, GREY, function() SetScope("account") end)
     win.scopeAccount:SetPoint("TOPRIGHT", 0, -4)
     win.scopeChar = MakeButton(win, 150, GREY, function() SetScope("char") end)
     win.scopeChar:SetPoint("RIGHT", win.scopeAccount, "LEFT", -6, 0)
@@ -1167,7 +1171,7 @@ local function CreateWindow(parent)
 end
 
 ns.Hub.Register({ key = "orders", order = 20,
-    label = function() return L("hub_tab_orders", db and #Orders.List(Scope()) or 0) end,
+    label = function() return L("hub_tab_orders", db and #Orders.List("account") or 0) end,
     build = CreateWindow, refresh = function() Refresh() end })
 
 -- The « Commandes » tab of the « Bagarre club » window: open (show true), closed (false) or the other way
