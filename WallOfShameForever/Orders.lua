@@ -480,7 +480,9 @@ local BUTTON_BG = { 0.07, 0.06, 0.04, 0.95 }
 local ACTIVE_BG = { 0.32, 0.24, 0.07, 0.95 } -- selected "this character / all" button
 local WHITE = "Interface\\Buttons\\WHITE8X8"
 local EDGE = "Interface\\Tooltips\\UI-Tooltip-Border"
-local ICON = "Interface\\Icons\\Trade_BlackSmithing"
+-- the guild's logo (media/ui/icon, from the site; tools/ui_textures.py), round for the minimap button
+local ICON = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\ui\\icon"
+local ICON_ROUND = "Interface\\AddOns\\" .. ADDON_NAME .. "\\media\\ui\\icon_round"
 local UNKNOWN_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 local ICON_READY = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14:14|t "
 local ICON_REFUSE = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14:14|t "
@@ -1076,7 +1078,6 @@ local function CreateWindow(parent)
     emptyIcon:SetSize(52, 52)
     emptyIcon:SetPoint("TOP", 0, 0)
     emptyIcon:SetTexture(ICON)
-    emptyIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     emptyIcon:SetDesaturated(true)
     emptyIcon:SetAlpha(0.6)
     win.empty.text = win.empty:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -1249,10 +1250,9 @@ local function CreateMinimapButton()
     background:SetPoint("TOPLEFT", 7, -5)
     background:SetTexture("Interface\\Minimap\\UI-Minimap-Background")
     local icon = b:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
-    icon:SetPoint("TOPLEFT", 7, -6)
-    icon:SetTexture(ICON)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    icon:SetSize(21, 21)
+    icon:SetPoint("TOPLEFT", 6, -5)
+    icon:SetTexture(ICON_ROUND) -- the guild's logo, cut round for the ring
     local overlay = b:CreateTexture(nil, "OVERLAY")
     overlay:SetSize(53, 53)
     overlay:SetPoint("TOPLEFT")
@@ -1346,7 +1346,6 @@ local function CreateToast()
     icon:SetPoint("TOPLEFT", 2, -2)
     icon:SetPoint("BOTTOMRIGHT", -2, 2)
     icon:SetTexture(ICON)
-    icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
     local border = iconFrame:CreateTexture(nil, "OVERLAY")
     border:SetAllPoints()
     border:SetTexture("Interface\\Common\\WhiteIconFrame")

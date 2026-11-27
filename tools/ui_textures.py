@@ -180,7 +180,21 @@ def bar():
     save(small(fill, w, h), "barfill.tga")
 
 
+def icon():
+    """The guild's logo (tools/bagarre-club.png, the site's icon): icon.tga 128x128 (notification, empty
+    list) and icon_round.tga 64x64 cut round (minimap button, inside its ring)."""
+    logo = Image.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bagarre-club.png")).convert("RGBA")
+    save(logo.resize((128, 128), Image.LANCZOS), "icon.tga")
+    big_logo = logo.resize((64 * S, 64 * S), Image.LANCZOS)
+    mask = Image.new("L", (64 * S, 64 * S), 0)
+    ImageDraw.Draw(mask).ellipse([0, 0, 64 * S - 1, 64 * S - 1], fill=255)
+    round_logo = Image.new("RGBA", (64 * S, 64 * S), (0, 0, 0, 0))
+    round_logo.paste(big_logo, (0, 0), mask)
+    save(small(round_logo, 64, 64), "icon_round.tga")
+
+
 if __name__ == "__main__":
+    icon()
     frame()
     shadow()
     glow()

@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.7.1 (2026-11-27)
+
+- The guild's logo instead of the forge icon: minimap button, orders notification, empty orders list
+  and the addon list
+
 ## v0.7.0 (2026-11-27)
 
 - New look: one « Bagarre club » window in the guild site's style (red frame with a gold rim, titles
