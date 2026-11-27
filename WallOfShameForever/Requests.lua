@@ -284,7 +284,9 @@ local function Build(parent)
     border:SetTexture("Interface\\Common\\WhiteIconFrame")
     border:SetVertexColor(UI.GOLD[1], UI.GOLD[2], UI.GOLD[3])
     local function TakeCursor()
-        local kind, id = GetCursorInfo and GetCursorInfo()
+        if not GetCursorInfo then return end
+        -- two values: « GetCursorInfo and GetCursorInfo() » would keep only the first (v0.8.2 fix)
+        local kind, id = GetCursorInfo()
         if kind == "item" and tonumber(id) then
             SetItem(tonumber(id))
             if ClearCursor then ClearCursor() end

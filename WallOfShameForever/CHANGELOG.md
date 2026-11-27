@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.8.2 (2026-11-27)
+
+- Requests: dropping an item on the slot (or clicking the slot with an item in hand) puts it in the slot;
+  the item stayed in hand before
+
 ## v0.8.1 (2026-11-27)
 
 - Requests: Shift+click on an item in the bags puts it in the slot (and closes the stack split window

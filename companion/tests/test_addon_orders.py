@@ -768,6 +768,23 @@ class RequestsTest(unittest.TestCase):
         self.assertEqual((ev["action"], ev["item"], ev["qty"]), ("new", 4306, 3))
         self.assertEqual(panel.listCap._text, "Demandes ouvertes (3)")
 
+    def test_drop_on_the_slot(self):
+        # v0.8.2: GetCursorInfo returns several values (kind, id, link); « X and X() » kept only the kind
+        a = self.addon(bot=[])
+        a.ns.Hub.Show("requests")
+        panel = a.g.WallOfShameForeverRequests
+        a.lua.execute('cursor = 9630 function GetCursorInfo() if cursor then return "item", cursor, "[Bottes]" end end '
+                      'function ClearCursor() cursor = nil end')
+        slot = panel.form.slot
+        slot.GetScript(slot, "OnReceiveDrag")(slot)
+        self.assertIsNone(a.g.cursor)  # taken from the hand
+        panel.form.publish.GetScript(panel.form.publish, "OnClick")(panel.form.publish)
+        self.assertEqual(self.parse(a.strips[-1])["item"], 9630)
+        # a click with an item in hand does the same
+        a.lua.execute("cursor = 4306")
+        slot.GetScript(slot, "OnClick")(slot, "LeftButton")
+        self.assertIsNone(a.g.cursor)
+
     def test_without_the_bot(self):
         a = self.addon()
         a.ns.Hub.Show("requests")
