@@ -92,6 +92,23 @@ class PayloadTest(unittest.TestCase):
         self.assertIsNone(events.parse_payload(base + "steal|6a1b2c3d123||||", "realtime"))
         self.assertIsNone(events.parse_payload(base + "take|bad id!||||", "realtime"))
 
+    def test_outbox_sends_requests_and_activities(self):
+        # companion 0.8.0 crashed here (KeyError 'zone'): both fell into the death branch
+        req = "2|R|Chamy Chan-R:R:1763030000:new|Chamy Chan|R|Bagarre|21|SHAMAN|1763030000|Alen#1234|new|6a1b2c3d123|1468|5||"
+        act = ("2|A|Chamy Chan-R:A:1312345678901234567:join:1763030000|Chamy Chan|R|Bagarre|42|SHAMAN|1763030000|Alen#1|"
+               "join|1312345678901234567|heal")
+        text = SAVED.replace('"2|L|x",', '"%s",\n"%s",' % (req, act))
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder)
+        path = os.path.join(folder, "WallOfShameForever.lua")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        sender = mock.Mock()
+        with mock.patch.object(companion, "log"):
+            companion.check_outbox([path], {}, set(), sender)
+        sent = [c.args[0]["type"] for c in sender.push.call_args_list]
+        self.assertEqual(sent, ["request", "activity"])
+
     def test_bad_status_or_fields(self):
         self.assertIsNone(events.parse_payload(PAYLOAD.replace("|refused|", "|maybe|"), "realtime"))
         self.assertIsNone(events.parse_payload(PAYLOAD + "|extra", "realtime"))

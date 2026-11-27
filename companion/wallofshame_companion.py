@@ -252,13 +252,18 @@ def check_strip(sct, state, sender, order_poller=None):
         return
     payload, box, position = found
     ev = events.parse_payload(payload, "realtime")
-    if not ev or ev["type"] not in ("death", "level", "duel", "kill", "order", "follow") or ev["id"] in state:
+    if not ev or ev["type"] not in ("death", "level", "duel", "kill", "order", "follow", "request", "activity") \
+            or ev["id"] in state:
         return
     state.add(ev["id"])
     if order_poller:
         order_poller.saw(ev)
     if ev["type"] == "order":  # never a screenshot
         log(f"order {ev['status']} seen on screen: {ev['order']} by {ev['name']}")
+        sender.push(ev, None)
+        return
+    if ev["type"] in ("request", "activity"):  # never a screenshot
+        log(f"{ev['type']} {ev['action']} seen on screen: {ev.get('request') or ev.get('activity')} by {ev['name']}")
         sender.push(ev, None)
         return
     if ev["type"] == "follow":  # never a screenshot
@@ -339,6 +344,17 @@ def check_outbox(paths, mtimes, state, sender, order_poller=None):
                 log(f"{ev['type']} found in SavedVariables: {ev['name']} vs "
                     f"{ev.get('opponent') or ev.get('victim')}")
                 sender.push(ev, None)
+                continue
+            if ev["type"] == "request":  # guild item request (addon 0.8.0): the bot needs it whenever it comes
+                log(f"request {ev['action']} found in SavedVariables: {ev['request']} by {ev['name']}")
+                sender.push(ev, None)
+                continue
+            if ev["type"] == "activity":  # activity sign-up from the game (addon 0.8.0)
+                log(f"activity {ev['action']} found in SavedVariables: {ev['activity']} by {ev['name']}")
+                sender.push(ev, None)
+                continue
+            if ev["type"] != "death":  # a kind this version does not handle: skipped, never a crash
+                log(f"{ev['type']} found in SavedVariables: not handled by this version, skipped")
                 continue
             if ev["time"] and time.time() - ev["time"] > MAX_AGE:
                 continue
