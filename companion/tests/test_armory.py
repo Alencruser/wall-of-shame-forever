@@ -13,6 +13,8 @@ STATE.gear = {
     [1] = "|cff0070dd|Hitem:10763:0:0:0:0:0:0:0:50:0:0:0:0|h[Barbute en glace-acier]|h|r",
     [5] = "|cff0070dd|Hitem:7939:1891:0:0:0:0:0:0:50:0:0:0:0|h[Cuirasse en vrai-argent]|h|r",
     [16] = "|cff0070dd|Hitem:7960:1897:0:0:0:0:1199:0:50:0:0:0:0|h[Championne en vrai-argent]|h|r",
+    -- WoW Forever: the random suffix is a bonus, the link like the current game's (real link)
+    [15] = "|cnIQ2:|Hitem:7483::::::::46:1489::1:1:12751:1:28:5247:::::|h[Cape de forestier de brigandage]|h|r",
 }
 STATE.ilvl = { [10763] = 43, [7939] = 49, [7960] = 52 }
 STATE.ranks = { 3, 0 }
@@ -65,8 +67,10 @@ class ArmoryTest(unittest.TestCase):
         self.assertFalse(ev["off"])
         self.assertEqual(ev["race"], "Humain")
         self.assertEqual(ev["gear"][0], {"slot": 1, "item": 10763, "enchant": 0, "suffix": 0, "ilvl": 43, "quality": 3})
-        self.assertEqual(ev["gear"][2], {"slot": 16, "item": 7960, "enchant": 1897, "suffix": 1199, "ilvl": 52,
+        self.assertEqual(ev["gear"][3], {"slot": 16, "item": 7960, "enchant": 1897, "suffix": 1199, "ilvl": 52,
                                          "quality": 3})
+        self.assertEqual(ev["gear"][2], {"slot": 15, "item": 7483, "enchant": 0, "suffix": -12751, "ilvl": 0,
+                                         "quality": 3})  # bonus 12751 « de brigandage »
         self.assertEqual(ev["stats"]["str"], 168)
         self.assertEqual(ev["stats"]["strB"], 61)
         self.assertEqual(ev["stats"]["armor"], 3420)

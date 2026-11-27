@@ -3,7 +3,8 @@
 -- logout; queued for the bot only when the gear, the talents or the level changed (stats alone move with
 -- every buff). Off with the « Show my gear on the site » option: the bot is told to hide the character.
 --   2|G|id|name|realm|guild|level|class|time|battletag|race|gear|stats|talents
---   gear: slot=item.enchant.suffix.ilvl.quality, separated by ";" (inventory slots 1 to 19), or "off"
+--   gear: slot=item.enchant.suffix.ilvl.quality, separated by ";" (inventory slots 1 to 19), or "off"; a negative
+--   suffix is the item's first bonus (WoW Forever's random suffixes)
 --   stats: key=value, separated by ";" (see STATS; a value the client does not give is left out)
 --   talents: tree/points/talent,talent,... trees separated by ";"; talent: spell.tier.column.rank.max.name
 --   (spell: the talent's spell, 0 if the client did not give it). WoW Forever (trait tree): no tree name, the
@@ -51,7 +52,12 @@ function Armory.ReadGear()
                 local ilvl = Call(C_Item and C_Item.GetDetailedItemLevelInfo, link)
                     or Call(GetDetailedItemLevelInfo, link) or select(4, Call(GetItemInfo, link))
                 local quality = Call(GetInventoryItemQuality, "player", slot)
-                list[#list + 1] = slot .. "=" .. table.concat({ id, tonumber(f[2]) or 0, tonumber(f[7]) or 0,
+                -- WoW Forever: the random suffix (« de brigandage ») is a bonus of the item (its link like the
+                -- current game's: item:id:enchant:4 gems:suffix:unique:level:spec:mask:context:count:bonuses…),
+                -- sent as a negative suffix (v0.9.2) so that the companion 0.8.3 passes it as it is
+                local suffix = tonumber(f[7]) or 0
+                if suffix == 0 and (tonumber(f[13]) or 0) > 0 and tonumber(f[14]) then suffix = -tonumber(f[14]) end
+                list[#list + 1] = slot .. "=" .. table.concat({ id, tonumber(f[2]) or 0, suffix,
                     tonumber(ilvl) or 0, tonumber(quality) or "" }, ".")
             end
         end

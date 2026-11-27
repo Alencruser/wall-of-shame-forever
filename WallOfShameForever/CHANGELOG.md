@@ -4,6 +4,8 @@
 
 - Armurerie: the lines between talents (« this talent leads to that one ») are sent too, so the site draws
   them like the game
+- Armurerie: items with a random suffix (« Cape de forestier de brigandage ») show with their suffix and its
+  stats: WoW Forever gives it as a bonus of the item
 
 ## v0.9.1 (2026-11-27)
 

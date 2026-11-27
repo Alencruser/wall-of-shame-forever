@@ -199,7 +199,8 @@ every reading:
 ```
 
 - `gear`: inventory slots 1 (head) to 19 (tabard) that hold something; `enchant` and `suffix` (« de l'ours »)
-  as in the item link, 0 if none; `ilvl` 0 and `quality` `null` when the client did not give them
+  as in the item link, 0 if none; a negative `suffix` (addon v0.9.2) is the item's first bonus ID (WoW Forever
+  gives random suffixes as bonuses: Wowhead `bonus=`); `ilvl` 0 and `quality` `null` when the client did not give them
 - `stats`: what the game's character sheet shows (buffs included); a stat the client does not give is left
   out. `str`…`spi` and their item bonus `strB`…`spiB`, `armor`, `hp`, `power`, `powerType`, melee `ap`
   `dmgMin` `dmgMax` `speed` `hit` `crit`, ranged `rap` `rdmgMin` `rdmgMax` `rspeed` `rcrit`, spells `sp`
