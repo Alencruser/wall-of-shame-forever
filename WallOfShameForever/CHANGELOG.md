@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.7.2 (2026-11-27)
+
+- Rogues: the lockpicking skill is sent with the professions (to the guild's bot and site, where the
+  Grimoire ranks the rogues), and shown in a new Lockpicking column of the window's Guild tab
+
 ## v0.7.1 (2026-11-27)
 
 - The guild's logo instead of the forge icon: minimap button, orders notification, empty orders list

@@ -143,3 +143,55 @@ class ProfessionLevelsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+LOCK_STUBS = r"""
+STATE.class = "ROGUE"
+C_SkillInfo = {
+    GetSkillLineInfoByID = function(id)
+        if id ~= 633 or STATE.noLockpicking then return nil end
+        return { skillID = 633, name = "Crochetage", skillRank = STATE.lockpicking or 175, maxRank = 225 }
+    end,
+}
+"""
+
+
+class LockpickingTest(unittest.TestCase):
+    """v0.7.2: a rogue's lockpicking (C_SkillInfo, skill line 633) goes with the professions, no recipes;
+    one diagnostic per character for the bot's debug.jsonl; nothing for the other classes."""
+
+    def addon(self, stubs):
+        a = Addon(orders=[])
+        a.lua.execute(PROF_STUBS)
+        a.lua.execute(stubs)
+        a.login()
+        a.db.discord = True
+        a.db.connection = "swf1.test"
+        for _ in range(3):
+            a.g.RunTimers()
+        return a
+
+    def test_rogue(self):
+        a = self.addon(LOCK_STUBS)
+        payloads = a.lua_list(a.db.outbox)
+        readings = [events.parse_payload(p, "savedvariables") for p in payloads if p.split("|")[1] == "P"]
+        lock = {x["skillLine"]: x for x in readings[-1]["professions"]}[633]
+        self.assertEqual((lock["name"], lock["level"], lock["max"], lock["recipes"]), ("Crochetage", 175, 225, None))
+        debug = [events.parse_payload(p, "savedvariables") for p in payloads if p.split("|")[1] == "X"]
+        self.assertEqual(len(debug), 1)
+        self.assertEqual(debug[0]["topic"], "crochetage")
+        self.assertIn("rank=175(skillRank)", debug[0]["details"])
+        # a skill-up: a new reading, no second diagnostic
+        a.g.STATE.lockpicking = 180
+        a.g.Fire("SKILL_LINES_CHANGED")
+        for _ in range(3):
+            a.g.RunTimers()
+        payloads = a.lua_list(a.db.outbox)
+        readings = [events.parse_payload(p, "savedvariables") for p in payloads if p.split("|")[1] == "P"]
+        self.assertEqual({x["skillLine"]: x for x in readings[-1]["professions"]}[633]["level"], 180)
+        self.assertEqual(len([p for p in payloads if p.split("|")[1] == "X"]), 1)
+
+    def test_not_a_rogue(self):
+        a = self.addon(LOCK_STUBS.replace('STATE.class = "ROGUE"', ""))
+        readings = [events.parse_payload(p, "savedvariables") for p in a.lua_list(a.db.outbox) if p.split("|")[1] == "P"]
+        self.assertNotIn(633, {x["skillLine"] for x in readings[-1]["professions"]})

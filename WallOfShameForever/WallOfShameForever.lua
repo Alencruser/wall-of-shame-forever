@@ -574,10 +574,30 @@ local function FormatSeen(m)
     return L("seen_days", math.floor(diff / 86400))
 end
 
-local HEADERS = { "col_name", "col_level", "col_zone", "col_seen", "col_deaths" }
+local HEADERS = { "col_name", "col_level", "col_zone", "col_seen", "col_deaths", "col_lockpicking" }
 -- columns of the roster tab, in the « Bagarre club » window (Hub.lua)
-local COL_X = { 0, 250, 320, 560, 700 }
-local COL_W = { 240, 60, 230, 130, 120 }
+local COL_X = { 0, 215, 270, 470, 590, 700 }
+local COL_W = { 205, 50, 190, 110, 100, 110 }
+
+-- Lockpicking of the guild's rogues, by lower-case name: the bot's list (companion's file, « hub »), and
+-- this character's own reading (fresher)
+local function LockpickingByName()
+    local out = {}
+    local file = _G.WallOfShameForever_Orders
+    local list = type(file) == "table" and type(file.hub) == "table" and file.hub.lockpicking
+    if type(list) == "table" then
+        for _, r in ipairs(list) do
+            if type(r) == "table" and type(r.name) == "string" and tonumber(r.level) then
+                out[r.name:lower()] = r.level .. "/" .. (tonumber(r.max) or "?")
+            end
+        end
+    end
+    local name, realm = MyNameAndRealm()
+    local mine = db and db.professions and name and db.professions[name .. "-" .. (realm or "")]
+    local lp = mine and mine[633]
+    if lp and lp.level then out[name:lower()] = lp.level .. "/" .. (lp.max or "?") end
+    return out
+end
 local ROW_H = 24
 
 local function RefreshWindow()
@@ -596,6 +616,7 @@ local function RefreshWindow()
     end)
 
     local child = window.scroll.child
+    local lockpicking = LockpickingByName()
     for i, entry in ipairs(list) do
         local row = rows[i]
         if not row then
@@ -604,7 +625,7 @@ local function RefreshWindow()
             row:SetPoint("TOPLEFT", 0, -(i - 1) * ROW_H)
             row:SetPoint("RIGHT", child, "RIGHT", -10, 0)
             row.cols = {}
-            for c = 1, 5 do
+            for c = 1, #HEADERS do
                 local fs = row:CreateFontString(nil, "OVERLAY", c == 1 and "GameFontHighlight" or "GameFontHighlightSmall")
                 fs:SetPoint("LEFT", COL_X[c] + 8, 0)
                 fs:SetWidth(COL_W[c])
@@ -625,6 +646,7 @@ local function RefreshWindow()
         row.cols[4]:SetText(FormatSeen(m))
         row.cols[5]:SetText(m.deaths and m.deaths > 0
             and L(m.deaths == 1 and "death_count_one" or "death_count", m.deaths) or "")
+        row.cols[6]:SetText(m.class == "ROGUE" and (lockpicking[ShortName(entry.name):lower()] or "|cff8f8f8f?|r") or "")
         row:Show()
     end
     for i = #list + 1, #rows do rows[i]:Hide() end
@@ -640,7 +662,7 @@ local function CreateWindow(parent)
     UI.Panel(window)
 
     window.headers = {}
-    for c = 1, 5 do
+    for c = 1, #HEADERS do
         local h = UI.Caption(window, 14)
         h:SetPoint("TOPLEFT", 14 + COL_X[c], -12)
         window.headers[c] = h
@@ -900,8 +922,69 @@ local function ReadProfessionLevels(store)
     if indexes == 0 and not (professionsListed or (loginAt and time() - loginAt >= 60)) then return end
     if indexes > 0 then professionsListed = true end
     for skillLine in pairs(store) do
-        if not present[skillLine] then store[skillLine] = nil end
+        if not present[skillLine] and skillLine ~= 633 then store[skillLine] = nil end -- lockpicking: below
     end
+end
+
+-- Lockpicking (rogues): not one of the professions GetProfessions lists. WoW Forever has no old skill list
+-- (GetSkillLineInfo is nil) but has C_SkillInfo; skill line 633. Kept with the professions, without
+-- recipes: the bot, the site's Grimoire and the « Bagarre club » window show it.
+local LOCKPICKING = 633
+local RANK_KEYS = { "skillRank", "rank", "currentRank", "skillLevel", "skillLineRank", "level" }
+local MAX_KEYS = { "maxRank", "skillMaxRank", "maxSkillLevel", "maxLevel", "max" }
+
+local function SkillLine(id)
+    local S = C_SkillInfo
+    if type(S) ~= "table" then return nil, "noSkillInfo" end
+    if type(S.GetSkillLineInfoByID) == "function" then
+        local ok, d = pcall(S.GetSkillLineInfoByID, id)
+        if ok and type(d) == "table" then return d, "byID" end
+    end
+    if type(S.GetNumSkillLines) == "function" and type(S.GetSkillLineInfo) == "function" then
+        local okN, n = pcall(S.GetNumSkillLines)
+        for i = 1, (okN and tonumber(n) or 0) do
+            local ok, d = pcall(S.GetSkillLineInfo, i)
+            if ok and type(d) == "table" and tonumber(d.skillID or d.skillLineID) == id then return d, "byIndex" end
+        end
+    end
+    return nil, "notFound"
+end
+
+local function FirstNumber(t, keys)
+    for _, k in ipairs(keys) do
+        local v = tonumber(t[k])
+        if v then return v, k end
+    end
+end
+
+local function ReadLockpicking(store)
+    local _, classFile = UnitClass("player")
+    if classFile ~= "ROGUE" then
+        store[LOCKPICKING] = nil
+        return
+    end
+    local d, how = SkillLine(LOCKPICKING)
+    local rank, rankKey, max
+    if d then
+        rank, rankKey = FirstNumber(d, RANK_KEYS)
+        max = FirstNumber(d, MAX_KEYS)
+    end
+    if rank and rank > 0 then
+        store[LOCKPICKING] = { name = d.name or d.skillName or L("lockpicking"), level = rank, max = max or rank }
+    end
+    -- once per character: how the client gave it, for the bot's debug.jsonl (checks the real client)
+    local name, realm, guild, battleTag = Identity()
+    db.lockpickingReported = db.lockpickingReported or {}
+    local key = name .. "-" .. realm
+    if db.lockpickingReported[key] or not (db.discord and db.connection) then return end
+    db.lockpickingReported[key] = true
+    local keys = {}
+    for k, v in pairs(d or {}) do keys[#keys + 1] = tostring(k) .. "=" .. tostring(v) end
+    table.sort(keys)
+    local details = table.concat({ "how=" .. how, "rank=" .. tostring(rank) .. "(" .. tostring(rankKey) .. ")",
+        "max=" .. tostring(max), "fields=" .. table.concat(keys, ",") }, ";"):gsub("|", "/"):sub(1, 1500)
+    AddToOutbox(table.concat({ "2", "X", key .. ":X:" .. time() .. ":lockpicking", name, realm, guild,
+        UnitLevel("player"), classFile, time(), battleTag, "crochetage", details }, "|"))
 end
 
 local function ProfessionsPayload(store)
@@ -952,6 +1035,7 @@ local function ReadOpenProfession()
     if not skillLine or skillLine ~= profSource then return end -- recipes not loaded yet
     local store = MyProfessions()
     ReadProfessionLevels(store)
+    ReadLockpicking(store)
     local entry = store[skillLine] or { name = info.professionName, level = info.skillLevel, max = info.maxSkillLevel }
     store[skillLine] = entry
     local recipes = {}
@@ -975,6 +1059,7 @@ local function RefreshProfessionLevels()
     if type(GetProfessions) ~= "function" or not db then return end
     local store = MyProfessions()
     ReadProfessionLevels(store)
+    ReadLockpicking(store)
     local name, realm = Identity()
     local sent = db.professionsSent and db.professionsSent[name .. "-" .. realm]
     if sent ~= LevelsSignature(store) then QueueProfessions(store) end
