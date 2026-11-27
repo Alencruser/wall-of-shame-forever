@@ -1,5 +1,10 @@
 # Wall of Shame Forever
 
+## v0.8.1 (2026-11-27)
+
+- Requests: Shift+click on an item in the bags puts it in the slot (and closes the stack split window
+  the game opens), whatever the client uses for links
+
 ## v0.8.0 (2026-11-27)
 
 - Item requests: a new « Demandes » tab in the « Bagarre club » window. Ask the guild for an item (drop it

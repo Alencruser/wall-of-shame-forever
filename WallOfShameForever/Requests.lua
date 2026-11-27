@@ -419,12 +419,34 @@ ns.Hub.Register({ key = "requests", order = 25,
 -- Shift+click an item (bags, quest log, chat link) while the tab is open: it goes in the slot
 -------------------------------------------------------------------------------
 
+-- Shift+click goes through several functions depending on where (bags, quest log, chat link) and on the
+-- client: all of them are listened to. In the bags, without a chat line open, the game opens the stack
+-- split window too: closed when the item went in the slot.
 local function OnInsertLink(text)
-    if panel and panel:IsShown() and panel:IsVisible() then
-        local id = ItemId(text)
-        if id then SetItem(id) end
+    if not (panel and panel:IsShown() and panel:IsVisible()) then return end
+    local id = ItemId(text)
+    if not id then return end
+    SetItem(id)
+    if StackSplitFrame and C_Timer then
+        C_Timer.After(0, function()
+            if StackSplitFrame:IsShown() then StackSplitFrame:Hide() end
+        end)
     end
 end
+
+local function HookLinks()
+    if type(hooksecurefunc) ~= "function" then return end
+    if type(ChatEdit_InsertLink) == "function" then hooksecurefunc("ChatEdit_InsertLink", OnInsertLink) end
+    if type(HandleModifiedItemClick) == "function" then
+        hooksecurefunc("HandleModifiedItemClick", function(link)
+            if not IsModifiedClick or IsModifiedClick("CHATLINK") then OnInsertLink(link) end
+        end)
+    end
+    if type(ChatFrameUtil) == "table" and type(ChatFrameUtil.InsertLink) == "function" then
+        hooksecurefunc(ChatFrameUtil, "InsertLink", OnInsertLink)
+    end
+end
+Requests.OnInsertLink = OnInsertLink
 
 -------------------------------------------------------------------------------
 -- Tooltip: « Demandé par Chamy Chan (5) » on an item someone asked for; a chat line when you loot it
@@ -479,9 +501,7 @@ events:SetScript("OnEvent", function(_, event, a, b)
         if not db then return end
         LocalActions()
         HookTooltips()
-        if type(hooksecurefunc) == "function" and type(ChatEdit_InsertLink) == "function" then
-            hooksecurefunc("ChatEdit_InsertLink", OnInsertLink)
-        end
+        HookLinks()
     elseif event == "CHAT_MSG_LOOT" then
         OnLoot(a, b)
     elseif event == "GET_ITEM_INFO_RECEIVED" then
