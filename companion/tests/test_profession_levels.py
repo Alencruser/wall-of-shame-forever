@@ -150,7 +150,7 @@ STATE.class = "ROGUE"
 C_SkillInfo = {
     GetSkillLineInfoByID = function(id)
         if id ~= 633 or STATE.noLockpicking then return nil end
-        return { skillID = 633, name = "Crochetage", skillRank = STATE.lockpicking or 175, maxRank = 225 }
+        return { skillID = 633, name = "Crochetage", rank = STATE.lockpicking or 175, maxRank = 225, modifier = 0, skillLineCategoryID = 9 }
     end,
 }
 """
@@ -180,7 +180,7 @@ class LockpickingTest(unittest.TestCase):
         debug = [events.parse_payload(p, "savedvariables") for p in payloads if p.split("|")[1] == "X"]
         self.assertEqual(len(debug), 1)
         self.assertEqual(debug[0]["topic"], "crochetage")
-        self.assertIn("rank=175(skillRank)", debug[0]["details"])
+        self.assertIn("rank=175(rank)", debug[0]["details"])  # the real client: rank, maxRank (2026-11-27)
         # a skill-up: a new reading, no second diagnostic
         a.g.STATE.lockpicking = 180
         a.g.Fire("SKILL_LINES_CHANGED")
