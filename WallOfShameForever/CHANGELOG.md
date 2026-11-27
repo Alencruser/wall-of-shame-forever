@@ -1,5 +1,13 @@
 # Wall of Shame Forever
 
+## v0.9.0 (2026-11-27)
+
+- Armurerie: your gear (with enchants), the stats of the character sheet and your talents are sent to the
+  site's new « Armurerie » page (guild members only), at login, when your gear or talents change, on a
+  level-up and at logout. Needs the companion 0.8.3.
+- New option « Montrer mon équipement et mes talents sur le site » (on by default, under « Carte et site »):
+  off, your character is removed from the page
+
 ## v0.8.5 (2026-11-27)
 
 - Orders: « À fabriquer (n) » and the window's « Commandes (n) » tab count the orders of the whole account;

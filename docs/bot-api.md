@@ -181,6 +181,36 @@ waits there). A new `id` per update:
 - keep the highest `seconds` per follower (`name`, `realm`) and `start`: an update received twice, or
   after a later one, changes nothing. A game crash loses at most the minutes since the last strip
 
+Armory event (addon v0.9.0, companion 0.8.3), from SavedVariables only (no strip, no screenshot): the
+character's gear, stats and talents for the site's « Armurerie ». Read a moment after login, when gear or
+talents change, on a level-up and at logout; queued only when the gear, the talents or the level changed
+(stats alone move with buffs). Only the latest reading of a character waits in the outbox; a new `id` for
+every reading:
+
+```json
+{ "type": "armory", "id": "Grumbar-Forever:G:1795800000", "name": "Grumbar", "realm": "Forever",
+  "guild": "Bagarre", "level": 50, "class": "WARRIOR", "time": 1795800000, "battletag": "Pierre#1234",
+  "race": "Humain", "off": false,
+  "gear": [ { "slot": 5, "item": 7939, "enchant": 1891, "suffix": 0, "ilvl": 49, "quality": 3 } ],
+  "stats": { "str": 168, "strB": 61, "armor": 3420, "ap": 446, "crit": 9.4 },
+  "talents": [ { "name": "Armes", "points": 31, "talents": [
+    { "spell": 12294, "tier": 7, "column": 2, "rank": 1, "max": 1, "name": "Frappe mortelle" } ] } ],
+  "test": false, "source": "savedvariables" }
+```
+
+- `gear`: inventory slots 1 (head) to 19 (tabard) that hold something; `enchant` and `suffix` (« de l'ours »)
+  as in the item link, 0 if none; `ilvl` 0 and `quality` `null` when the client did not give them
+- `stats`: what the game's character sheet shows (buffs included); a stat the client does not give is left
+  out. `str`…`spi` and their item bonus `strB`…`spiB`, `armor`, `hp`, `power`, `powerType`, melee `ap`
+  `dmgMin` `dmgMax` `speed` `hit` `crit`, ranged `rap` `rdmgMin` `rdmgMax` `rspeed` `rcrit`, spells `sp`
+  (best school) `sp2`…`sp7` (holy, fire, nature, frost, shadow, arcane) `heal` `scrit` `shit` `mp5` `mp5c`,
+  defense `def` `dodge` `parry` `block` and resistances `res2`…`res6` (fire, nature, frost, shadow, arcane)
+- `talents`: one entry per tree; `spell`: the talent's spell from its tooltip, `null` if the client did not
+  give it
+- `off`: `true` when the player turned off « Montrer mon équipement et mes talents sur le site »: `gear`,
+  `stats` and `talents` are empty, remove the character from the armory
+- keep the latest reading per character (`time`); an older one arriving late changes nothing
+
 - `class`: WoW class token (`WARRIOR`, `PALADIN`, `HUNTER`, `ROGUE`, `PRIEST`, `SHAMAN`, `MAGE`,
   `WARLOCK`, `DRUID`)
 - `killer`: mob or player name, or the environment (`Falling`, `Drowning`, `Fatigue`, `Fire`,

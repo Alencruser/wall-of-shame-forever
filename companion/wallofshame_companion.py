@@ -328,6 +328,11 @@ def check_outbox(paths, mtimes, state, sender, order_poller=None):
                 log(f"follow found in SavedVariables: {ev['name']} followed {ev['target']} for {ev['seconds']}s")
                 sender.push(ev, None)
                 continue
+            if ev["type"] == "armory":  # a new id per reading: the bot keeps the latest
+                log(f"gear found in SavedVariables: {ev['name']}, "
+                    + ("option off" if ev["off"] else f"{len(ev['gear'])} item(s), {len(ev['talents'])} talent tree(s)"))
+                sender.push(ev, None)
+                continue
             if ev["type"] == "banklog":  # a new id per reading: the bot merges them, late is fine
                 log(f"guild bank log found in SavedVariables: {len(ev['lines'])} line(s) read by {ev['name']}")
                 sender.push(ev, None)

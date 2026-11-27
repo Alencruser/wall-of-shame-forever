@@ -16,6 +16,7 @@ local DEFAULTS = {
     sound = true,
     volume = 100,         -- banner sounds: 20, 40, 60, 80 or 100 % (one file per volume, media/sounds)
     shareLocation = true, -- own position on the guildmates' world map (GuildMap.lua)
+    shareGear = true,     -- own gear, stats and talents on the site's « Armurerie » (Armory.lua)
     discord = true,       -- own deaths for the companion, once officers set the guild up
     language = "auto",    -- "auto" (game client's language), "en" or "fr": see Locales.lua
     stripPosition = "TOPLEFT", -- where the companion's strip shows (DeathStrip.lua, ns.STRIP_POSITIONS)
@@ -1073,6 +1074,7 @@ end
 
 -- New connection code (another bot or Discord server): everything is sent again
 local function ResendProfessions()
+    if ns.Armory then ns.Armory.Resend() end -- the gear for the site's « Armurerie » too (Armory.lua)
     if not db.professionsSent then return end
     local name, realm = Identity()
     db.professionsSent[name .. "-" .. realm] = nil
@@ -1800,7 +1802,7 @@ local function CreateOptions()
     -- the window (same look as « Bagarre club », UI.lua) holds `options`, where the controls go
     local UI = ns.UI
     local win = CreateFrame("Frame", "WallOfShameForeverOptions", UIParent)
-    win:SetSize(390, 640)
+    win:SetSize(390, 664)
     win:SetFrameStrata("FULLSCREEN_DIALOG")
     win:SetToplevel(true)
     UI.Window(win)
@@ -1824,6 +1826,7 @@ local function CreateOptions()
         local cb = CheckBox(options, x, y, function(self)
             db[key] = Checked(self)
             if key == "shareLocation" and ns.OnShareChanged then ns.OnShareChanged() end
+            if key == "shareGear" and ns.Armory then ns.Armory.OnOptionChanged() end
             RefreshOptions()
         end)
         cb.key = key
@@ -1873,12 +1876,13 @@ local function CreateOptions()
     -- Map
     options.mapHeading = Heading(options, -200)
     options.shareLocation = Bound("shareLocation", 20, -218)
+    options.shareGear = Bound("shareGear", 20, -242)
 
     -- Language
-    options.languageHeading = Heading(options, -260)
+    options.languageHeading = Heading(options, -284)
     options.languages = {}
     for i, lang in ipairs({ "auto", "fr", "en" }) do
-        local cb = CheckBox(options, 20, -278 - (i - 1) * 24, function()
+        local cb = CheckBox(options, 20, -302 - (i - 1) * 24, function()
             SetLanguage(lang)
         end)
         cb.lang = lang
@@ -1886,10 +1890,10 @@ local function CreateOptions()
     end
 
     -- Companion: where its strip shows, a small screen of 3 x 3 boxes (never the middle one)
-    options.stripHeading = Heading(options, -364)
+    options.stripHeading = Heading(options, -388)
     local screen = CreateFrame("Frame", nil, options)
     screen:SetSize(96, 60)
-    screen:SetPoint("TOPLEFT", 24, -386)
+    screen:SetPoint("TOPLEFT", 24, -410)
     local bg = screen:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(0, 0, 0, 0.6)
@@ -1934,8 +1938,8 @@ local function CreateOptions()
     options.stripHint:SetJustifyH("LEFT")
 
     -- Windows: fades and slides (off for those who want none)
-    options.windowHeading = Heading(options, -462)
-    options.animations = Bound("animations", 20, -480)
+    options.windowHeading = Heading(options, -486)
+    options.animations = Bound("animations", 20, -504)
 
     options.test = ns.UI.Button(options, { width = 220, onClick = TestBanners })
     options.test:SetPoint("BOTTOM", 0, 6)
@@ -1962,7 +1966,7 @@ RefreshOptions = function()
     options.mapHeading:SetText(L("sect_map"))
     options.languageHeading:SetText(L("sect_language"))
     local labels = { popups = "opt_popups", selfBanner = "opt_self", sound = "opt_sound",
-        shareLocation = "opt_share_location", animations = "opt_animations" }
+        shareLocation = "opt_share_location", shareGear = "opt_share_gear", animations = "opt_animations" }
     for _, cb in ipairs(options.checks) do
         cb.label:SetText(L(labels[cb.key]))
         cb:SetChecked(db[cb.key] ~= false and (db[cb.key] and true or cb.key == "animations"))

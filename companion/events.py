@@ -35,6 +35,10 @@ FIELDS = {
     # dungeon, else empty) or leave; activity: the id of its Discord card
     "A": ("activity", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "action", "activity",
                        "role"]),
+    # the character's gear, stats and talents for the site's « Armurerie » (addon 0.9.0, Armory.lua); gear "off":
+    # the player turned the option off, the bot hides the character
+    "G": ("armory", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "race", "gear", "stats",
+                     "talents"]),
 }
 NUMBERS = ("level", "killerLevel", "victimLevel", "time", "money", "start", "seconds", "item", "qty")
 # give (addon 0.8.3): qty given, reward = mode (mail or hand), note = the gift's id; got / notgot: the asker
@@ -88,6 +92,60 @@ def parse_bank_lines(text):
     return lines
 
 
+def _num(text):
+    if re.fullmatch(r"-?\d+", text or ""):
+        return int(text)
+    if re.fullmatch(r"-?\d+\.\d+", text or ""):
+        return float(text)
+    return None
+
+
+def parse_gear(text):
+    """"slot=item.enchant.suffix.ilvl.quality;..." -> list (slots 1 to 19); quality None if unknown."""
+    gear = []
+    for entry in filter(None, (text or "").split(";")):
+        slot, _, rest = entry.partition("=")
+        parts = rest.split(".")
+        if _int(slot) is None or not 1 <= _int(slot) <= 19 or len(parts) != 5:
+            continue
+        numbers = [_int(p) for p in parts[:4]]
+        if None in numbers or numbers[0] <= 0:
+            continue
+        gear.append({"slot": _int(slot), "item": numbers[0], "enchant": numbers[1], "suffix": numbers[2],
+                     "ilvl": numbers[3], "quality": _int(parts[4])})
+    return gear
+
+
+def parse_stats(text):
+    """"key=value;..." -> dict of numbers (keys: letters and digits)."""
+    stats = {}
+    for entry in filter(None, (text or "").split(";")):
+        key, _, value = entry.partition("=")
+        if re.fullmatch(r"[a-zA-Z0-9]{1,12}", key) and _num(value) is not None:
+            stats[key] = _num(value)
+    return stats
+
+
+def parse_talents(text):
+    """"tree/points/spell.tier.column.rank.max.name,...;..." -> list of trees."""
+    trees = []
+    for entry in filter(None, (text or "").split(";")):
+        parts = entry.split("/", 2)
+        if len(parts) != 3 or _int(parts[1]) is None:
+            continue
+        talents = []
+        for talent in filter(None, parts[2].split(",")):
+            fields = talent.split(".", 5)
+            numbers = [_int(f) for f in fields[:5]]
+            if len(fields) != 6 or None in numbers:
+                continue
+            spell, tier, column, rank, max_rank = numbers
+            talents.append({"spell": spell or None, "tier": tier, "column": column, "rank": rank, "max": max_rank,
+                            "name": fields[5]})
+        trees.append({"name": parts[0], "points": _int(parts[1]), "talents": talents})
+    return trees
+
+
 def parse_payload(payload, source):
     parts = payload.split("|")
     if len(parts) < 2 or parts[0] != "2" or parts[1] not in FIELDS:
@@ -122,6 +180,13 @@ def parse_payload(payload, source):
         if ev["action"] == "give" and not (ev["qty"] and 1 <= ev["qty"] <= 999 and ev["reward"] in GIFT_MODES):
             return None
         if ev["action"] in ("give", "got", "notgot") and not re.fullmatch(r"[0-9a-zA-Z]{4,24}", ev["note"]):
+            return None
+    elif kind == "armory":
+        ev["off"] = ev["gear"] == "off"
+        ev["gear"] = [] if ev["off"] else parse_gear(ev["gear"])
+        ev["stats"] = parse_stats(ev["stats"])
+        ev["talents"] = parse_talents(ev["talents"])
+        if not ev["off"] and not ev["gear"]:
             return None
     elif kind == "banklog":
         ev["lines"] = parse_bank_lines(ev["lines"])
