@@ -1,5 +1,11 @@
 # Wall of Shame Forever
 
+## v0.9.4 (2026-11-28)
+
+- Guild bank: when the bank opens, the items log of every tab you can see is read too (after the money log),
+  with each item's Auctionator price when Auctionator is installed: for the guild help score, an item
+  deposited or withdrawn counts for part of its auction house price. Needs the companion 0.8.5.
+
 ## v0.9.3 (2026-11-27)
 
 - Updates told in game: when a guildmate has a newer version of the addon, or when the bot says a newer addon

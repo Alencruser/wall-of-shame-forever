@@ -23,6 +23,8 @@ FIELDS = {
     # guild bank money log, read when the bank opens (see GuildBank.lua); the bot merges the readings
     "B": ("banklog", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "money",
                       "lines"]),
+    # guild bank item tabs' logs (addon 0.9.4), read after the money log, with Auctionator's prices
+    "I": ("bankitems", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "lines"]),
     # time spent following a guildmate (see Follow.lua): a strip every 5 minutes and at the end, the
     # end in the outbox too; the bot keeps the highest seconds per follower and start
     "F": ("follow", ["id", "name", "realm", "guild", "level", "class", "time", "battletag", "target", "start",
@@ -89,6 +91,26 @@ def parse_bank_lines(text):
         copper, years, months, days, hours = numbers
         lines.append({"type": parts[0], "who": parts[6], "copper": copper, "years": years,
                       "months": months, "days": days, "hours": hours})
+    return lines
+
+
+def parse_bank_items(text):
+    """"type:item:count:years:months:days:hours:who:price:age:tab;..." -> list (deposits and withdrawals);
+    price (copper for one) and age (days) None if unknown."""
+    lines = []
+    for entry in filter(None, (text or "").split(";")):
+        parts = entry.split(":")
+        if len(parts) != 11 or parts[0] not in ("deposit", "withdraw") or not parts[7]:
+            continue
+        numbers = [_int(p) for p in parts[1:7]]
+        if None in numbers or numbers[0] <= 0 or numbers[1] <= 0:
+            continue
+        item, count, years, months, days, hours = numbers
+        price, age, tab = _int(parts[8]), _int(parts[9]), _int(parts[10])
+        lines.append({"type": parts[0], "who": parts[7], "item": item, "count": count, "years": years,
+                      "months": months, "days": days, "hours": hours,
+                      "price": price if price and price > 0 else None,
+                      "age": age if age is not None and age >= 0 else None, "tab": tab})
     return lines
 
 
@@ -190,6 +212,10 @@ def parse_payload(payload, source):
             return None
     elif kind == "banklog":
         ev["lines"] = parse_bank_lines(ev["lines"])
+        if not ev["lines"]:
+            return None
+    elif kind == "bankitems":
+        ev["lines"] = parse_bank_items(ev["lines"])
         if not ev["lines"]:
             return None
     ev["test"] = ev["id"].startswith("test:")

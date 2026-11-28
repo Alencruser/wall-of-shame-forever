@@ -99,7 +99,85 @@ class GuildBankTest(unittest.TestCase):
         self.assertEqual(len(ev["lines"]), 3)
 
 
+ITEM_STUBS = r"""
+STATE.tabs = {
+    {
+        { "deposit", "Lwi Zi", "|cffffffff|Hitem:2589::::::::20:::::|h[Etoffe de lin]|h|r", 20, 1, 2, 0, 0, 3, 4 },
+        { "move", "Lwi Zi", "|cffffffff|Hitem:2589::::::::20:::::|h[Etoffe de lin]|h|r", 5, 1, 2, 0, 0, 0, 1 },
+    },
+    {
+        { "withdraw", "Chamy Chan", "|cff1eff00|Hitem:1715::::::::20:::::|h[Armure]|h|r", 1, 2, 2, 0, 0, 0, 2 },
+    },
+}
+function GetNumGuildBankTabs() return #STATE.tabs end
+function GetNumGuildBankTransactions(tab) return #(STATE.tabs[tab] or {}) end
+function GetGuildBankTransaction(tab, i) return unpack(STATE.tabs[tab][i]) end
+Auctionator = { API = { v1 = {
+    GetAuctionPriceByItemLink = function(caller, link)
+        assert(caller == "WallOfShameForever")
+        if link:find("item:2589:") then return 45 end
+    end,
+    GetAuctionAgeByItemLink = function(caller, link) return 2 end,
+} } }
+"""
+
+
+class GuildBankItemsTest(unittest.TestCase):
+    def setUp(self):
+        self.a = Addon(orders=[])
+        self.a.lua.execute(BANK_STUBS)
+        self.a.lua.execute(ITEM_STUBS)
+        load = self.a.lua.eval("function(src, ns) assert(loadstring(src, 'GuildBank.lua'))('WallOfShameForever', ns) end")
+        with open(os.path.join(ADDON, "GuildBank.lua"), encoding="utf-8") as f:
+            load(f.read(), self.a.ns)
+        self.a.login()
+        self.a.db.discord = True
+        self.a.db.connection = "swf1.test"
+        self.state = self.a.g.STATE
+
+    def open_bank(self):
+        self.a.g.Fire("GUILDBANKFRAME_OPENED")
+        for _ in range(10):  # the money log, then each item tab one after the other, then the reading
+            self.a.g.RunTimers()
+            self.a.g.Fire("GUILDBANKLOG_UPDATE")
+
+    def readings(self):
+        return [p for p in self.a.lua_list(self.a.db.outbox) if p.split("|")[1] == "I"]
+
+    def test_item_tabs_queried_one_after_the_other_and_queued_with_prices(self):
+        self.open_bank()
+        self.assertEqual(self.a.lua_list(self.state.queried), [7, 1, 2])
+        readings = self.readings()
+        self.assertEqual(len(readings), 1)
+        ev = events.parse_payload(readings[0], "savedvariables")
+        self.assertEqual(ev["type"], "bankitems")
+        self.assertEqual(len(ev["lines"]), 2)  # the move is left out
+        self.assertEqual(ev["lines"][0], {"type": "deposit", "who": "Lwi Zi", "item": 2589, "count": 20, "years": 0,
+                                          "months": 0, "days": 3, "hours": 4, "price": 45, "age": 2, "tab": 1})
+        self.assertEqual(ev["lines"][1]["type"], "withdraw")
+        self.assertIsNone(ev["lines"][1]["price"])  # Auctionator never saw it
+        self.assertEqual(ev["lines"][1]["tab"], 2)
+
+    def test_unchanged_item_log_not_queued_again(self):
+        self.open_bank()
+        self.state.now = self.state.now + 3600
+        self.open_bank()
+        self.assertEqual(len(self.readings()), 1)
+
+    def test_without_auctionator_no_price(self):
+        self.a.lua.execute("Auctionator = nil")
+        self.open_bank()
+        ev = events.parse_payload(self.readings()[0], "savedvariables")
+        self.assertIsNone(ev["lines"][0]["price"])
+        self.assertIsNone(ev["lines"][0]["age"])
+
+
 class ParseBankLinesTest(unittest.TestCase):
+    def test_bank_items_bad_entries_skipped(self):
+        lines = events.parse_bank_items("deposit:2589:20:0:0:1:2:Lex:45:3:1;move:2589:5:0:0:0:0:Lex:::1;"
+                                        "withdraw:x:1:0:0:0:0:Bob:::2;withdraw:1715:1:0:0:0:0:Bob:::2")
+        self.assertEqual([(l["type"], l["item"], l["price"]) for l in lines], [("deposit", 2589, 45), ("withdraw", 1715, None)])
+
     def test_unknown_money_is_none(self):
         ev = events.parse_payload("2|B|C-R:B:1|C|R|G|20|SHAMAN|1|A#1||deposit:5:0:0:0:1:Lex", "savedvariables")
         self.assertIsNone(ev["money"])

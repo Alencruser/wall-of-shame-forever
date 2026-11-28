@@ -162,6 +162,25 @@ merges the readings of every guildmate:
   character, amount and a date within 3 hours of a known transaction (two identical lines of one
   reading stay two transactions)
 
+Guild bank items event (addon 0.9.4, companion 0.8.5), from SavedVariables only: the item tabs' logs, read
+right after the money log, one tab after the other (tabs the player can't see give nothing). Same rules as
+`banklog`: queued only when changed, a new `id` per reading, merged by the bot. Deposits and withdrawals
+only (moves left out), with Auctionator's price when the player has it:
+
+```json
+{ "type": "bankitems", "id": "Grumbar-Forever:I:1793702383", "name": "Grumbar", "realm": "Forever",
+  "guild": "Bagarre", "level": 30, "class": "WARRIOR", "time": 1793702383, "battletag": "Pierre#1234",
+  "lines": [
+    { "type": "deposit", "who": "Lwi Zi", "item": 2589, "count": 20, "years": 0, "months": 0, "days": 3,
+      "hours": 4, "price": 45, "age": 2, "tab": 1 } ],
+  "test": false, "source": "savedvariables" }
+```
+
+- `price`: Auctionator's price of one, in copper (`null` without Auctionator or never seen); `age`: days
+  since Auctionator saw it (`null` if unknown or older than 21 days)
+- the bot keeps a line once (same type, item, count, character, date within 3 hours) and, per item, the
+  price of the most recent sighting; the guild score counts a deposit (+) or a withdrawal (−) for 70 % of it
+
 Follow event, on the strip and in SavedVariables, never with a screenshot: the time the player has
 spent auto-following (`/follow`) a member of their guild. A strip every 5 minutes during the follow
 and one at the end; the end is also queued in SavedVariables (only the latest update of a session

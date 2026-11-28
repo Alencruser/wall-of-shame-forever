@@ -333,6 +333,10 @@ def check_outbox(paths, mtimes, state, sender, order_poller=None):
                     + ("option off" if ev["off"] else f"{len(ev['gear'])} item(s), {len(ev['talents'])} talent tree(s)"))
                 sender.push(ev, None)
                 continue
+            if ev["type"] == "bankitems":  # a new id per reading: the bot merges them, late is fine
+                log(f"guild bank item log found in SavedVariables: {len(ev['lines'])} line(s) read by {ev['name']}")
+                sender.push(ev, None)
+                continue
             if ev["type"] == "banklog":  # a new id per reading: the bot merges them, late is fine
                 log(f"guild bank log found in SavedVariables: {len(ev['lines'])} line(s) read by {ev['name']}")
                 sender.push(ev, None)
